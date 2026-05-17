@@ -55,6 +55,14 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
         return message.includes('directory not empty') || message.includes('not empty') || message.includes('enotempty');
     }
 
+    private static isFileNotFound(err: unknown): boolean {
+        if (BaseSftpFileSystemProvider.isRemoteNotFound(err)) {
+            return true;
+        }
+        const message = String((err as { message?: string })?.message ?? '').toLowerCase();
+        return message.includes('filenotfound') || message.includes('entry not found');
+    }
+
     watch(_uri: vscode.Uri, _options: { recursive: boolean; excludes: string[] }): vscode.Disposable {
         return new vscode.Disposable(() => { });
     }
@@ -166,6 +174,35 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
     }
 
     async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+        const isSameRemoteConnection = oldUri.scheme === newUri.scheme && oldUri.authority === newUri.authority;
+        if (!isSameRemoteConnection) {
+            this.syncStatusReporter?.beginSync(oldUri);
+            this.syncStatusReporter?.beginSync(newUri);
+            try {
+                await this.copy(oldUri, newUri, { overwrite: options.overwrite });
+
+                const oldPath = this.getFilePath(oldUri);
+                if (oldPath !== '/') {
+                    await this.delete(oldUri, { recursive: true });
+                }
+
+                this._onDidChangeFile.fire([
+                    { type: vscode.FileChangeType.Deleted, uri: oldUri },
+                    { type: vscode.FileChangeType.Created, uri: newUri },
+                ]);
+                this.syncStatusReporter?.completeSync(oldUri);
+                this.syncStatusReporter?.completeSync(newUri);
+                return;
+            } catch (err: any) {
+                this.syncStatusReporter?.failSync(oldUri);
+                this.syncStatusReporter?.failSync(newUri);
+                if (BaseSftpFileSystemProvider.isFileExists(err)) {
+                    throw vscode.FileSystemError.FileExists(newUri);
+                }
+                throw vscode.FileSystemError.Unavailable(`Failed to rename: ${err.message}`);
+            }
+        }
+
         const oldPath = this.getFilePath(oldUri);
         const newPath = this.getFilePath(newUri);
         const client = this.getClient(oldUri);
@@ -231,17 +268,14 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
     }
 
     private async ensureDestinationForCopy(destination: vscode.Uri, overwrite: boolean): Promise<void> {
-        const destinationClient = this.getClient(destination);
-        const destinationPath = this.getFilePath(destination);
-
         try {
-            await destinationClient.stat(destinationPath);
+            await vscode.workspace.fs.stat(destination);
             if (!overwrite) {
-                throw new Error(`File exists: ${destinationPath}`);
+                throw new Error(`File exists: ${destination.toString()}`);
             }
-            await destinationClient.delete(destinationPath, { recursive: true });
+            await vscode.workspace.fs.delete(destination, { recursive: true, useTrash: false });
         } catch (err: any) {
-            if (!BaseSftpFileSystemProvider.isRemoteNotFound(err)) {
+            if (!BaseSftpFileSystemProvider.isFileNotFound(err)) {
                 if (String(err.message ?? '').toLowerCase().includes('file exists')) {
                     throw err;
                 }
@@ -256,9 +290,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
         const sourceStat = await vscode.workspace.fs.stat(source);
 
         if ((sourceStat.type & vscode.FileType.Directory) !== 0) {
-            const destinationClient = this.getClient(destination);
-            const destinationPath = this.getFilePath(destination);
-            await destinationClient.mkdir(destinationPath);
+            await vscode.workspace.fs.createDirectory(destination);
 
             const children = await vscode.workspace.fs.readDirectory(source);
             for (const [name] of children) {
@@ -272,9 +304,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
         }
 
         const content = await vscode.workspace.fs.readFile(source);
-        const destinationClient = this.getClient(destination);
-        const destinationPath = this.getFilePath(destination);
-        await destinationClient.writeFile(destinationPath, Buffer.from(content));
+        await vscode.workspace.fs.writeFile(destination, content);
     }
 
     async disconnectAll(): Promise<void> {
