@@ -52,7 +52,7 @@
                 {
                     "id": "pterodactyl-sftp",
                     "title": "VSDactyl",
-                    "icon": "resources/icon.svg"
+                    "icon": "resources/icon.png"
                 }
             ]
         },
@@ -61,7 +61,7 @@
                 {
                     "id": "pterodactylServers",
                     "name": "Servers",
-                    "icon": "resources/icon.svg"
+                    "icon": "resources/icon.png"
                 }
             ]
         },
