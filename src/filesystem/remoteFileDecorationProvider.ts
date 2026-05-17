@@ -8,6 +8,25 @@ export class RemoteFileDecorationProvider implements vscode.FileDecorationProvid
 
     private readonly states = new Map<string, SyncState>();
 
+    constructor() {
+        // Listen to configuration changes
+        vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration('vsdactyl.pterodactylIcon') || e.affectsConfiguration('vsdactyl.sftpIcon')) {
+                // Fire change event for all open folders to refresh decorations
+                const folders = vscode.workspace.workspaceFolders || [];
+                const uris: vscode.Uri[] = [];
+                for (const folder of folders) {
+                    if (folder.uri.scheme === 'ptero' || folder.uri.scheme === 'sftp') {
+                        uris.push(folder.uri);
+                    }
+                }
+                if (uris.length > 0) {
+                    this._onDidChangeFileDecorations.fire(uris);
+                }
+            }
+        });
+    }
+
     provideFileDecoration(uri: vscode.Uri): vscode.ProviderResult<vscode.FileDecoration> {
         if (uri.scheme !== 'ptero' && uri.scheme !== 'sftp') {
             return;
@@ -32,10 +51,19 @@ export class RemoteFileDecorationProvider implements vscode.FileDecorationProvid
             };
         }
 
+        const isPtero = uri.scheme === 'ptero';
+        const config = vscode.workspace.getConfiguration('vsdactyl');
+        const badge = isPtero ? 
+            (config.get<string>('pterodactylIcon.badge') || 'P') : 
+            (config.get<string>('sftpIcon.badge') || 'S');
+        const colorKey = isPtero ?
+            config.get<string>('pterodactylIcon.color') || 'descriptionForeground' :
+            config.get<string>('sftpIcon.color') || 'descriptionForeground';
+
         return {
-            badge: uri.scheme === 'ptero' ? 'P' : 'S',
-            tooltip: uri.scheme === 'ptero' ? 'Remote panel filesystem' : 'Remote SFTP filesystem',
-            color: new vscode.ThemeColor('descriptionForeground'),
+            badge: badge || (isPtero ? 'P' : 'S'),
+            tooltip: isPtero ? 'Remote panel filesystem' : 'Remote SFTP filesystem',
+            color: colorKey ? new vscode.ThemeColor(colorKey) : new vscode.ThemeColor('descriptionForeground'),
         };
     }
 

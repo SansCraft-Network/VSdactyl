@@ -2,7 +2,7 @@
     "name": "sanscraft-vsdactyl",
     "displayName": "VSDactyl",
     "description": "VSDactyl, SansCraft Network's official fork of the Pterodactyl extension from MinhMCPC, for connecting to panel and standalone SFTP servers from VS Code",
-    "version": "2.1.0-vsdactyl.3",
+    "version": "2.1.0-vsdactyl.4",
     "icon": "resources/icon.png",
     "license": "MIT",
     "publisher": "SansCraft",
@@ -279,6 +279,35 @@
                     "group": "navigation@9"
                 }
             ]
+        },
+        "configuration": {
+            "title": "VSDactyl",
+            "properties": {
+                "vsdactyl.pterodactylIcon.badge": {
+                    "type": "string",
+                    "default": "P",
+                    "description": "Badge character for Pterodactyl panel remote filesystem items",
+                    "scope": "window"
+                },
+                "vsdactyl.sftpIcon.badge": {
+                    "type": "string",
+                    "default": "S",
+                    "description": "Badge character for SFTP remote filesystem items",
+                    "scope": "window"
+                },
+                "vsdactyl.pterodactylIcon.color": {
+                    "type": "string",
+                    "default": "",
+                    "description": "VS Code theme color for Pterodactyl filesystem badges (e.g., 'descriptionForeground')",
+                    "scope": "window"
+                },
+                "vsdactyl.sftpIcon.color": {
+                    "type": "string",
+                    "default": "",
+                    "description": "VS Code theme color for SFTP filesystem badges (e.g., 'charts.green')",
+                    "scope": "window"
+                }
+            }
         }
     },
     "scripts": {
