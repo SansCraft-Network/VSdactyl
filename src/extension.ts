@@ -6,6 +6,7 @@ import { PterodactylFileSystemProvider } from './filesystem/pterodactylFileSyste
 import { SftpOnlyFileSystemProvider } from './filesystem/sftpOnlyFileSystemProvider';
 import { RemoteFileDecorationProvider } from './filesystem/remoteFileDecorationProvider';
 import { AccountFormPanel } from './views/accountFormPanel';
+import { SftpAccountFormPanel } from './views/sftpAccountFormPanel';
 import { SftpClient } from './sftp/sftpClient';
 import { TerminalManager } from './terminal/terminalManager';
 
@@ -204,16 +205,20 @@ async function collectSftpAccountData(existingAccount?: SftpOnlyAccount): Promis
 }
 
 async function openAddSftpAccountForm(): Promise<void> {
-    const accountData = await collectSftpAccountData();
-    if (!accountData) { return; }
-
-    const account: SftpOnlyAccount = {
-        id: accountManager.generateId(),
-        ...accountData,
-    };
-
-    await accountManager.addAccount(account);
-    vscode.window.showInformationMessage(`SFTP account "${account.name}" added successfully!`);
+    SftpAccountFormPanel.show(extensionContext.extensionUri, async (accountData) => {
+        if (!accountData) { return; }
+        const account: SftpOnlyAccount = {
+            id: accountManager.generateId(),
+            ...accountData,
+            branding: 'SansCraft Network Corp',
+        };
+        try {
+            await accountManager.addAccount(account);
+            vscode.window.showInformationMessage(`SFTP account "${account.name}" added successfully!`);
+        } catch (e: any) {
+            vscode.window.showErrorMessage(`Failed to add SFTP account: ${e.message || e}`);
+        }
+    });
 }
 
 async function setupSshKey(): Promise<void> {
