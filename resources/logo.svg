@@ -1,11 +1,28 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="512" height="512" rx="100" fill="#1E1E3F"/>
-<path d="M365.5 146.5C365.5 146.5 328 184 290.5 184C253 184 215.5 146.5 215.5 146.5" stroke="#6C5CE7" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M290.5 184V365.5" stroke="#6C5CE7" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M178 259H403" stroke="#6C5CE7" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M140.5 146.5L253 259" stroke="#A29BFE" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M440.5 146.5L328 259" stroke="#A29BFE" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M290.5 80C290.5 80 400 120 400 220C400 320 290.5 365.5 290.5 365.5" stroke="#74B9FF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M140.5 320H215.5" stroke="#FDCB6E" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="100" y="320" width="150" height="100" rx="20" stroke="#FDCB6E" stroke-width="24"/>
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="64 132 900 300" xmlns:bx="https://boxy-svg.com">
+	<circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13px;" cx="144.994" cy="206.138" r="29.266"/>
+	<circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="288.852" cy="206.084" r="29.266"/>
+	<circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="144.833" cy="352.548" r="29.266"/>
+	<circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="288.691" cy="352.495" r="29.266"/>
+	<circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13px;" cx="217.209" cy="279.337" r="29.266"/>
+	<rect x="170.465" y="199.167" width="95.008" height="14.595" style="fill: rgb(10, 58, 102); stroke: rgb(10, 58, 102); stroke-width: 0px; paint-order: stroke;"/>
+	<rect x="168.227" y="345.471" width="95.008" height="14.595" style="fill: rgb(10, 58, 102); stroke: rgb(10, 58, 102); stroke-width: 0; paint-order: stroke;"/>
+	<circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="217.552" cy="279.142" r="29.266"/>
+	<line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102); transform-box: fill-box; transform-origin: 50% 50%;" x1="269.921" y1="297.539" x2="234.836" y2="333.534" transform="matrix(0, 1, -1, 0, -0.000004, -0.000001)"/>
+	<line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5px;" x1="273.564" y1="336.469" x2="233.233" y2="295.174"/>
+	<line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102);" x1="197.901" y1="298.611" x2="162.816" y2="334.605"/>
+	<line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5; transform-box: fill-box; transform-origin: 50% 50%;" x1="183.685" y1="313.65" x2="160.602" y2="337.022" transform="matrix(-1, 0, 0, -1, 0.000011, 0.000009)"/>
+	<line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102); transform-origin: 181.05px 243.43px;" x1="198.593" y1="225.433" x2="163.508" y2="261.428" transform="matrix(0, 1, -1, 0, 0.000007, 0.000014)"/>
+	<line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="200.364" y1="263.045" x2="160.033" y2="221.75"/>
+	<line style="fill: none; stroke-width: 20px; stroke: rgb(10, 58, 102);" x1="271.148" y1="224.721" x2="236.064" y2="260.715"/>
+	<line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="273.413" y1="222.172" x2="250.554" y2="245.008"/>
+	<defs>
+		<style bx:fonts="Inter">@import url(https://fonts.googleapis.com/css2?family=Inter%3Aital%2Cwght%400%2C100..900%3B1%2C100..900&amp;display=swap);</style>
+	</defs>
+	<text style="fill: rgb(7, 59, 97); font-family: Inter; font-size: 91px; font-weight: 803; letter-spacing: 2.8px; white-space: pre;" x="343.684" y="297.989">SANSCRAFT</text>
+	<text style="fill: rgb(51, 51, 51); font-family: Inter; font-size: 43.695px; font-weight: 626; letter-spacing: 10.6px; white-space: pre;" transform="matrix(1, 0, 0, 0.961209, -51.391376, -25.447037)" x="406.816" y="397.537">NETWORK CORP.</text>
+	<circle style="stroke: rgb(0, 0, 0); stroke-width: 0px; fill: rgb(36, 232, 245);" cx="254.076" cy="242.498" r="9.144"/>
+	<circle style="fill: rgb(36, 232, 245); stroke: rgb(10, 58, 102); stroke-width: 0px;" cx="180.283" cy="317.354" r="9.144"/>
+	<line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="265.204" y1="205.814" x2="167.584" y2="205.615"/>
+	<line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="265.917" y1="352.943" x2="167.645" y2="352.744"/>
 </svg>

@@ -1,31 +1,40 @@
 {
-    "name": "pterodactyl-sftp",
-    "displayName": "Pterodactyl SFTP",
-    "description": "Connect to Pterodactyl panel servers, browse and edit files remotely via API",
+    "name": "sanscraft-vsdactyl",
+    "displayName": "VSDactyl",
+    "description": "VSDactyl, SansCraft Network's official fork of the Pterodactyl extension from MinhMCPC, for connecting to panel and standalone SFTP servers from VS Code",
     "version": "2.0.2",
-    "icon": "resources/icon.png",
+    "icon": "resources/icon.svg",
     "license": "MIT",
-    "publisher": "minhmcpc",
-    "author": "minhmcpc",
+    "publisher": "SansCraft",
+    "author": "SansCraft Network Corp",
     "engines": {
         "vscode": "^1.80.0"
     },
     "categories": [
         "Other"
     ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces": {
+            "supported": true
+        }
+    },
     "activationEvents": [
-        "onStartupFinished"
+        "onStartupFinished",
+        "onFileSystem:ptero",
+        "onFileSystem:sftp"
     ],
     "main": "./out/extension.js",
     "repository": {
         "type": "git",
-        "url": "https://github.com/MinhMCPC/Pterodactyl-extension.git"
+        "url": "https://github.com/SansCraft-Network/VSdactyl"
     },
     "bugs": {
-        "url": "https://github.com/MinhMCPC/Pterodactyl-extension/issues"
+        "url": "https://github.com/SansCraft-Network/VSdactyl/issues"
     },
-    "homepage": "https://github.com/MinhMCPC/Pterodactyl-extension/blob/main/README.md",
+    "homepage": "https://github.com/SansCraft-Network/VSdactyl/blob/main/README.md",
     "keywords": [
+        "sanscraft",
         "pterodactyl",
         "sftp",
         "server management",
@@ -34,7 +43,7 @@
         "console"
     ],
     "galleryBanner": {
-        "color": "#1e1e3f",
+        "color": "#0a3a66",
         "theme": "dark"
     },
     "contributes": {
@@ -42,8 +51,8 @@
             "activitybar": [
                 {
                     "id": "pterodactyl-sftp",
-                    "title": "Pterodactyl SFTP",
-                    "icon": "resources/icon.png"
+                    "title": "VSDactyl",
+                    "icon": "resources/icon.svg"
                 }
             ]
         },
@@ -52,70 +61,80 @@
                 {
                     "id": "pterodactylServers",
                     "name": "Servers",
-                    "icon": "resources/icon.png"
+                    "icon": "resources/icon.svg"
                 }
             ]
         },
         "commands": [
             {
                 "command": "pterodactyl.addAccount",
-                "title": "Pterodactyl: Add Account",
+                "title": "VSDactyl: Add Account",
                 "icon": "$(add)"
             },
             {
+                "command": "pterodactyl.addSftpAccount",
+                "title": "VSDactyl: Add SFTP Account",
+                "icon": "$(server-environment)"
+            },
+            {
                 "command": "pterodactyl.editAccount",
-                "title": "Pterodactyl: Edit Account",
+                "title": "VSDactyl: Edit Account",
                 "icon": "$(edit)"
             },
             {
                 "command": "pterodactyl.removeAccount",
-                "title": "Pterodactyl: Remove Account",
+                "title": "VSDactyl: Remove Account",
                 "icon": "$(trash)"
             },
             {
                 "command": "pterodactyl.refreshServers",
-                "title": "Pterodactyl: Refresh Servers",
+                "title": "VSDactyl: Refresh Servers",
                 "icon": "$(refresh)"
             },
             {
                 "command": "pterodactyl.connectServer",
-                "title": "Pterodactyl: Connect to Server",
+                "title": "VSDactyl: Connect to Server",
                 "icon": "$(remote)"
             },
             {
                 "command": "pterodactyl.disconnectServer",
-                "title": "Pterodactyl: Disconnect Server",
+                "title": "VSDactyl: Disconnect Server",
                 "icon": "$(debug-disconnect)"
             },
             {
                 "command": "pterodactyl.reconnectServer",
-                "title": "Pterodactyl: Reconnect Server",
+                "title": "VSDactyl: Reconnect Server",
                 "icon": "$(debug-restart)"
             },
             {
                 "command": "pterodactyl.openTerminal",
-                "title": "Pterodactyl: Open Server Terminal",
+                "title": "VSDactyl: Open Server Terminal",
                 "icon": "$(terminal)"
             },
             {
                 "command": "pterodactyl.exportData",
-                "title": "Pterodactyl: Export Account Data",
+                "title": "VSDactyl: Export Account Data",
                 "icon": "$(cloud-download)"
             },
             {
                 "command": "pterodactyl.importData",
-                "title": "Pterodactyl: Import Account Data",
+                "title": "VSDactyl: Import Account Data",
                 "icon": "$(cloud-upload)"
             },
             {
                 "command": "pterodactyl.setupSshKey",
-                "title": "Pterodactyl: Setup Auto SSH Key",
+                "title": "VSDactyl: Setup Auto SSH Key",
                 "icon": "$(key)"
             },
             {
                 "command": "pterodactyl.showSftpLog",
-                "title": "Pterodactyl: Show SFTP Debug Log",
+                "title": "VSDactyl: Show SFTP Debug Log",
                 "icon": "$(output)"
+            },
+            {
+                "command": "pterodactyl.editConnectionFromExplorer",
+                "title": "VSDactyl: Edit Connection Details",
+                "icon": "$(edit)"
             },
             {
                 "command": "pterodactyl.startServer",
@@ -142,6 +161,11 @@
             "view/title": [
                 {
                     "command": "pterodactyl.addAccount",
+                    "when": "view == pterodactylServers",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "pterodactyl.addSftpAccount",
                     "when": "view == pterodactylServers",
                     "group": "navigation@1"
                 },
@@ -188,6 +212,11 @@
                     "group": "inline@1"
                 },
                 {
+                    "command": "pterodactyl.connectServer",
+                    "when": "view == pterodactylServers && viewItem == account-sftp",
+                    "group": "inline@1"
+                },
+                {
                     "command": "pterodactyl.startServer",
                     "when": "view == pterodactylServers && viewItem == server-offline",
                     "group": "inline@2"
@@ -218,14 +247,36 @@
                     "group": "context@1"
                 },
                 {
+                    "command": "pterodactyl.disconnectServer",
+                    "when": "view == pterodactylServers && viewItem == account-sftp",
+                    "group": "context@1"
+                },
+                {
                     "command": "pterodactyl.reconnectServer",
                     "when": "view == pterodactylServers && viewItem =~ /server.*/",
+                    "group": "context@2"
+                },
+                {
+                    "command": "pterodactyl.reconnectServer",
+                    "when": "view == pterodactylServers && viewItem == account-sftp",
                     "group": "context@2"
                 },
                 {
                     "command": "pterodactyl.openTerminal",
                     "when": "view == pterodactylServers && viewItem =~ /server.*/",
                     "group": "context@3"
+                }
+            ],
+            "explorer/context": [
+                {
+                    "command": "pterodactyl.editConnectionFromExplorer",
+                    "when": "explorerResourceIsFolder && resourceScheme == ptero",
+                    "group": "navigation@9"
+                },
+                {
+                    "command": "pterodactyl.editConnectionFromExplorer",
+                    "when": "explorerResourceIsFolder && resourceScheme == sftp",
+                    "group": "navigation@9"
                 }
             ]
         }

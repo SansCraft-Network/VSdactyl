@@ -23,7 +23,7 @@ export class SshKeyGenerator {
         // The 'key' object contains { private, public } strings in OpenSSH/PEM format.
         // Public key from ssh2.utils already includes the comment and is in OpenSSH format.
         // We ensure it has our custom comment for easier identification on the panel.
-        const sshPublicKey = key.public.trim() + ' vscode-pterodactyl-auto';
+        const sshPublicKey = key.public.trim() + ' vscode-vsdactyl-auto';
 
         return {
             privateKey: key.private,

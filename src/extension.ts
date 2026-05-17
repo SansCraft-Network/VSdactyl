@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import { AccountManager } from './accounts/accountManager';
-import { PterodactylClient, PteroAccount } from './api/pterodactylClient';
+import { PterodactylClient, PteroAccount, SftpOnlyAccount } from './api/pterodactylClient';
 import { ServerTreeProvider, ServerTreeItem } from './views/serverTreeProvider';
 import { PterodactylFileSystemProvider } from './filesystem/pterodactylFileSystemProvider';
+import { SftpOnlyFileSystemProvider } from './filesystem/sftpOnlyFileSystemProvider';
+import { RemoteFileDecorationProvider } from './filesystem/remoteFileDecorationProvider';
 import { AccountFormPanel } from './views/accountFormPanel';
 import { SftpClient } from './sftp/sftpClient';
 import { TerminalManager } from './terminal/terminalManager';
@@ -10,6 +12,8 @@ import { TerminalManager } from './terminal/terminalManager';
 let accountManager: AccountManager;
 let serverTreeProvider: ServerTreeProvider;
 let fileSystemProvider: PterodactylFileSystemProvider;
+let sftpFileSystemProvider: SftpOnlyFileSystemProvider;
+let remoteDecorationProvider: RemoteFileDecorationProvider;
 let terminalManager: TerminalManager;
 let extensionContext: vscode.ExtensionContext;
 
@@ -24,7 +28,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Initialize managers
     accountManager = new AccountManager(context);
     serverTreeProvider = new ServerTreeProvider(accountManager);
-    fileSystemProvider = new PterodactylFileSystemProvider();
+    remoteDecorationProvider = new RemoteFileDecorationProvider();
+    fileSystemProvider = new PterodactylFileSystemProvider(remoteDecorationProvider);
+    sftpFileSystemProvider = new SftpOnlyFileSystemProvider(remoteDecorationProvider);
     terminalManager = new TerminalManager();
 
     // Register FileSystemProvider for ptero:// scheme
@@ -33,6 +39,18 @@ export function activate(context: vscode.ExtensionContext) {
             isCaseSensitive: true,
             isReadonly: false,
         })
+    );
+
+    // Register FileSystemProvider for sftp:// scheme
+    context.subscriptions.push(
+        vscode.workspace.registerFileSystemProvider('sftp', sftpFileSystemProvider, {
+            isCaseSensitive: true,
+            isReadonly: false,
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.window.registerFileDecorationProvider(remoteDecorationProvider)
     );
 
     // Register TreeView
@@ -46,6 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Register commands
     context.subscriptions.push(
         vscode.commands.registerCommand('pterodactyl.addAccount', () => openAddAccountForm()),
+        vscode.commands.registerCommand('pterodactyl.addSftpAccount', () => openAddSftpAccountForm()),
         vscode.commands.registerCommand('pterodactyl.editAccount', (item?: ServerTreeItem) => openEditAccountForm(item)),
         vscode.commands.registerCommand('pterodactyl.removeAccount', (item?: ServerTreeItem) => removeAccount(item)),
         vscode.commands.registerCommand('pterodactyl.refreshServers', () => refreshServers()),
@@ -57,6 +76,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('pterodactyl.showSftpLog', () => SftpClient.showDebugLog()),
         vscode.commands.registerCommand('pterodactyl.setupSshKey', () => setupSshKey()),
         vscode.commands.registerCommand('pterodactyl.openTerminal', (item?: ServerTreeItem) => openTerminal(item)),
+        vscode.commands.registerCommand('pterodactyl.editConnectionFromExplorer', (uri?: vscode.Uri) => editConnectionFromExplorer(uri)),
 
         // Power Actions
         vscode.commands.registerCommand('pterodactyl.startServer', (item?: ServerTreeItem) => sendPowerSignal(item, 'start')),
@@ -68,15 +88,136 @@ export function activate(context: vscode.ExtensionContext) {
     // Auto-restore connections
     restoreConnections();
 
-    Logger.info('Pterodactyl SFTP extension activated');
+    Logger.info('VSDactyl extension activated');
 }
 
 // ... existing functions ...
 
 import { SshKeyGenerator } from './utils/sshKeyGenerator';
 
+async function collectSftpAccountData(existingAccount?: SftpOnlyAccount): Promise<Omit<SftpOnlyAccount, 'id'> | undefined> {
+    const name = await vscode.window.showInputBox({
+        prompt: 'Enter a display name for this SFTP connection',
+        value: existingAccount?.name || '',
+        validateInput: (value) => value.trim() ? null : 'Name is required',
+    });
+    if (!name) { return undefined; }
+
+    const host = await vscode.window.showInputBox({
+        prompt: 'Enter the SFTP host',
+        value: existingAccount?.host || '',
+        placeHolder: 'sftp.example.com',
+        validateInput: (value) => value.trim() ? null : 'Host is required',
+    });
+    if (!host) { return undefined; }
+
+    const portInput = await vscode.window.showInputBox({
+        prompt: 'Enter the SFTP port',
+        value: String(existingAccount?.port || 22),
+        placeHolder: '22',
+        validateInput: (value) => {
+            const port = Number.parseInt(value, 10);
+            return Number.isInteger(port) && port > 0 && port <= 65535 ? null : 'Enter a valid port between 1 and 65535';
+        },
+    });
+    if (!portInput) { return undefined; }
+
+    const username = await vscode.window.showInputBox({
+        prompt: 'Enter the SFTP username',
+        value: existingAccount?.username || '',
+        placeHolder: 'ubuntu',
+        validateInput: (value) => value.trim() ? null : 'Username is required',
+    });
+    if (!username) { return undefined; }
+
+    const authChoice = await vscode.window.showQuickPick(
+        [
+            { label: 'SSH Key', description: 'Authenticate with a private key file', value: 'ssh-key' as const },
+            { label: 'Password', description: 'Authenticate with a password', value: 'password' as const },
+        ],
+        {
+            placeHolder: 'Select the SFTP authentication method',
+            ignoreFocusOut: true,
+            canPickMany: false,
+        }
+    );
+    if (!authChoice) { return undefined; }
+
+    let privateKeyPath = existingAccount?.privateKeyPath || '';
+    let privateKeyData = existingAccount?.privateKeyData || '';
+    let password = existingAccount?.password || '';
+
+    if (authChoice.value === 'ssh-key') {
+        const keyPath = await vscode.window.showInputBox({
+            prompt: existingAccount ? 'SSH private key path (leave blank to keep current key)' : 'SSH private key path',
+            value: existingAccount?.privateKeyPath || '',
+            placeHolder: 'C:\\Users\\you\\.ssh\\id_ed25519',
+            validateInput: (value) => {
+                if (value.trim()) { return null; }
+                return (existingAccount?.privateKeyPath || existingAccount?.privateKeyData) ? null : 'SSH private key path is required';
+            },
+        });
+        if (keyPath === undefined) { return undefined; }
+
+        if (keyPath.trim()) {
+            privateKeyPath = keyPath.trim();
+            privateKeyData = '';
+        } else if (!existingAccount?.privateKeyPath && !existingAccount?.privateKeyData) {
+            return undefined;
+        }
+
+        password = '';
+    } else {
+        const passwordInput = await vscode.window.showInputBox({
+            prompt: existingAccount ? 'SFTP password (leave blank to keep current password)' : 'Enter the SFTP password',
+            password: true,
+            placeHolder: existingAccount?.password ? 'Leave blank to keep current password' : 'SFTP password',
+            validateInput: (value) => {
+                if (value.length > 0) { return null; }
+                return existingAccount?.password ? null : 'Password is required';
+            },
+        });
+        if (passwordInput === undefined) { return undefined; }
+
+        if (passwordInput.length > 0) {
+            password = passwordInput;
+        } else if (!existingAccount?.password) {
+            return undefined;
+        }
+
+        privateKeyPath = '';
+        privateKeyData = '';
+    }
+
+    return {
+        name,
+        type: 'sftpOnly',
+        branding: 'SansCraft Network Corp',
+        username,
+        host,
+        port: Number.parseInt(portInput, 10),
+        sftpAuthMethod: authChoice.value,
+        privateKeyPath,
+        privateKeyData,
+        password: password || undefined,
+    };
+}
+
+async function openAddSftpAccountForm(): Promise<void> {
+    const accountData = await collectSftpAccountData();
+    if (!accountData) { return; }
+
+    const account: SftpOnlyAccount = {
+        id: accountManager.generateId(),
+        ...accountData,
+    };
+
+    await accountManager.addAccount(account);
+    vscode.window.showInformationMessage(`SFTP account "${account.name}" added successfully!`);
+}
+
 async function setupSshKey(): Promise<void> {
-    const accounts = accountManager.getAccounts();
+    const accounts = await accountManager.getAccounts();
     if (accounts.length === 0) {
         vscode.window.showErrorMessage('No accounts found. Please add an account first.');
         return;
@@ -84,7 +225,7 @@ async function setupSshKey(): Promise<void> {
 
     // Select Account
     const picked = await vscode.window.showQuickPick(
-        accounts.map(a => ({ label: a.name, description: a.panelUrl, account: a })),
+        accounts.filter(a => a.type === 'pterodactyl').map(a => ({ label: a.name, description: (a as any).panelUrl, account: a })),
         { placeHolder: 'Select account to upload SSH Key to' }
     );
     if (!picked) return;
@@ -124,7 +265,8 @@ async function setupSshKey(): Promise<void> {
             progress.report({ message: 'Uploading Public Key to Panel...' });
 
             // 3. Upload Public Key
-            const client = new PterodactylClient(account.panelUrl, account.apiKey);
+            if (account.type !== 'pterodactyl') return;
+            const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
             await client.createSshKey(keyName, keyPair.publicKey);
 
             vscode.window.showInformationMessage(`SSH Key "${keyName}" created! Private key saved to: ${keyPath}`);
@@ -217,13 +359,13 @@ async function openEditAccountForm(item?: ServerTreeItem): Promise<void> {
     if (item?.account) {
         account = item.account;
     } else {
-        const accounts = accountManager.getAccounts();
+        const accounts = await accountManager.getAccounts();
         if (accounts.length === 0) {
             vscode.window.showInformationMessage('No accounts to edit.');
             return;
         }
         const picked = await vscode.window.showQuickPick(
-            accounts.map(a => ({ label: a.name, description: a.panelUrl, account: a })),
+            accounts.map(a => ({ label: a.name, description: a.type === 'pterodactyl' ? a.panelUrl : a.host, account: a })),
             { placeHolder: 'Select account to edit' }
         );
         if (!picked) { return; }
@@ -231,6 +373,15 @@ async function openEditAccountForm(item?: ServerTreeItem): Promise<void> {
     }
 
     if (!account) { return; }
+
+    if (account.type === 'sftpOnly') {
+        const updated = await collectSftpAccountData(account);
+        if (!updated) { return; }
+
+        await accountManager.editAccount(account.id, updated);
+        vscode.window.showInformationMessage(`SFTP account "${updated.name}" updated successfully!`);
+        return;
+    }
 
     const editId = account.id;
     AccountFormPanel.show(
@@ -249,13 +400,13 @@ async function removeAccount(item?: ServerTreeItem): Promise<void> {
     if (item?.account) {
         account = item.account;
     } else {
-        const accounts = accountManager.getAccounts();
+        const accounts = await accountManager.getAccounts();
         if (accounts.length === 0) {
             vscode.window.showInformationMessage('No accounts to remove.');
             return;
         }
         const picked = await vscode.window.showQuickPick(
-            accounts.map(a => ({ label: a.name, description: a.panelUrl, account: a })),
+            accounts.map(a => ({ label: a.name, description: a.type === 'pterodactyl' ? a.panelUrl : a.host, account: a })),
             { placeHolder: 'Select account to remove' }
         );
         if (!picked) { return; }
@@ -285,13 +436,54 @@ function refreshServers(): void {
 
 async function connectToServer(item?: ServerTreeItem, silent: boolean = false): Promise<void> {
     try {
-        if (!item?.server || !item?.account) {
+        if (!item?.account) {
+            vscode.window.showErrorMessage('Please select an account or server from the tree to connect.');
+            return;
+        }
+
+        const account = item.account;
+
+        if (account.type === 'sftpOnly') {
+            Logger.info(`SFTP Connect (Standalone): ${account.name} -> ${account.host}:${account.port}`);
+            try {
+                sftpFileSystemProvider.registerConnection(account);
+            } catch (err: any) {
+                Logger.error('Failed to register SFTP connection', err);
+                vscode.window.showErrorMessage(`Failed to initialize connection: ${err.message}`);
+                return;
+            }
+
+            const uri = vscode.Uri.parse(`sftp://${account.id}/`);
+            const folderName = `🦕 ${account.name}`;
+
+            const existingFolder = vscode.workspace.workspaceFolders?.find(
+                f => f.uri.scheme === 'sftp' && f.uri.authority === account.id
+            );
+
+            if (existingFolder) {
+                vscode.window.showInformationMessage(`Already connected to "${account.name}".`);
+                vscode.commands.executeCommand('revealInExplorer', uri);
+                return;
+            }
+
+            vscode.workspace.updateWorkspaceFolders(
+                vscode.workspace.workspaceFolders?.length || 0,
+                0,
+                { uri, name: folderName }
+            );
+
+            if (!silent) {
+                vscode.window.showInformationMessage(`Connected to "${account.name}".`);
+            }
+            return;
+        }
+
+        if (!item.server) {
             vscode.window.showErrorMessage('Please select a server from the tree to connect.');
             return;
         }
 
         const server = item.server;
-        const account = item.account;
         Logger.info(`Connecting to server: ${server.name} (${server.identifier})`);
 
         if (server.is_suspended) {
@@ -370,21 +562,27 @@ async function connectToServer(item?: ServerTreeItem, silent: boolean = false): 
 async function disconnectServer(item?: ServerTreeItem): Promise<void> {
     let identifier: string | undefined;
     let serverName: string = '';
+    let scheme: string = 'ptero';
 
-    if (item?.server) {
+    if (item?.account?.type === 'sftpOnly') {
+        identifier = item.account.id;
+        serverName = item.account.name;
+        scheme = 'sftp';
+    } else if (item?.server) {
         identifier = item.server.identifier;
         serverName = item.server.name;
     } else {
         // Find active connection from workspace
-        const folders = vscode.workspace.workspaceFolders?.filter(f => f.uri.scheme === 'ptero') || [];
+        const folders = vscode.workspace.workspaceFolders?.filter(f => f.uri.scheme === 'ptero' || f.uri.scheme === 'sftp') || [];
         if (folders.length === 0) {
-            vscode.window.showErrorMessage('No Pterodactyl server connected.');
+            vscode.window.showErrorMessage('No server connected.');
             return;
         }
 
         if (folders.length === 1) {
             identifier = folders[0].uri.authority;
             serverName = folders[0].name.replace('🦕 ', '');
+            scheme = folders[0].uri.scheme;
         } else {
             const picked = await vscode.window.showQuickPick(
                 folders.map(f => ({ label: f.name, description: f.uri.authority, uri: f.uri })),
@@ -393,39 +591,51 @@ async function disconnectServer(item?: ServerTreeItem): Promise<void> {
             if (!picked) return;
             identifier = picked.description;
             serverName = picked.label.replace('🦕 ', '');
+            scheme = picked.uri.scheme;
         }
     }
 
     if (!identifier) return;
 
-    // Remove workspace folder
-    const folder = vscode.workspace.workspaceFolders?.find(
-        f => f.uri.scheme === 'ptero' && f.uri.authority === identifier
-    );
-
-    if (folder) {
-        const index = vscode.workspace.workspaceFolders!.indexOf(folder);
-        vscode.workspace.updateWorkspaceFolders(index, 1);
+    if (scheme === 'sftp') {
+        await sftpFileSystemProvider.disconnectServer(identifier);
+    } else {
+        await fileSystemProvider.disconnectServer(identifier);
     }
 
-    // Disconnect SFTP
-    await fileSystemProvider.disconnectServer(identifier);
-    vscode.window.showInformationMessage(`Disconnected from "${serverName}".`);
+    // Remove from workspace
+    const index = vscode.workspace.workspaceFolders?.findIndex(
+        f => f.uri.scheme === scheme && f.uri.authority === identifier
+    );
+
+    if (index !== undefined && index !== -1) {
+        vscode.workspace.updateWorkspaceFolders(index, 1);
+        vscode.window.showInformationMessage(`Disconnected from "${serverName}".`);
+    } else {
+        vscode.window.showWarningMessage(`Server "${serverName}" was not connected in the workspace.`);
+    }
 }
 
 async function reconnectServer(item?: ServerTreeItem): Promise<void> {
     let identifier: string | undefined;
     let serverName: string = '';
+    let scheme: 'ptero' | 'sftp' = 'ptero';
 
     // If called from tree view
-    if (item?.server && item?.account) {
+    if (item?.account?.type === 'sftpOnly') {
+        identifier = item.account.id;
+        serverName = item.account.name;
+        scheme = 'sftp';
+    } else if (item?.server && item?.account) {
         identifier = item.server.identifier;
         serverName = item.server.name;
     } else {
         // Called from command palette
-        const folders = vscode.workspace.workspaceFolders?.filter(f => f.uri.scheme === 'ptero') || [];
+        const folders = vscode.workspace.workspaceFolders?.filter(
+            f => f.uri.scheme === 'ptero' || f.uri.scheme === 'sftp'
+        ) || [];
         if (folders.length === 0) {
-            vscode.window.showErrorMessage('No Pterodactyl server connected to reconnect.');
+            vscode.window.showErrorMessage('No server connected to reconnect.');
             return;
         }
 
@@ -443,6 +653,7 @@ async function reconnectServer(item?: ServerTreeItem): Promise<void> {
 
         identifier = targetFolder.uri.authority;
         serverName = targetFolder.name.replace('🦕 ', '');
+        scheme = targetFolder.uri.scheme === 'sftp' ? 'sftp' : 'ptero';
     }
 
     if (!identifier) return;
@@ -450,9 +661,24 @@ async function reconnectServer(item?: ServerTreeItem): Promise<void> {
     Logger.info(`Reconnecting to ${serverName} (${identifier})...`);
 
     try {
-        await fileSystemProvider.reconnect(identifier);
+        if (scheme === 'sftp') {
+            await sftpFileSystemProvider.reconnect(identifier);
+        } else {
+            await fileSystemProvider.reconnect(identifier);
+        }
         vscode.window.showInformationMessage(`Reconnected to "${serverName}" successfully.`);
     } catch (err: any) {
+        if (scheme === 'sftp' && err.message.includes('No active connection')) {
+            const account = await accountManager.getAccountById(identifier);
+            if (account && account.type === 'sftpOnly') {
+                sftpFileSystemProvider.registerConnection(account);
+                vscode.window.showInformationMessage(`Reconnected to "${serverName}" successfully.`);
+                return;
+            }
+            vscode.window.showErrorMessage(`Could not reconnect: SFTP account not found for "${serverName}".`);
+            return;
+        }
+
         // If no active connection found (e.g. after reload), try to find server in tree
         if (err.message.includes('No active connection')) {
             Logger.info(`No active connection state for ${identifier}, attempting to discover from tree...`);
@@ -491,8 +717,13 @@ async function openTerminal(item?: ServerTreeItem): Promise<void> {
         return;
     }
 
+    if (item.account.type !== 'pterodactyl') {
+        vscode.window.showErrorMessage('Open Terminal is only available for panel-backed servers.');
+        return;
+    }
+
     const server = item.server;
-    const client = new PterodactylClient(item.account.panelUrl, item.account.apiKey);
+    const client = new PterodactylClient(item.account.panelUrl, item.account.apiKey || '');
 
     try {
         await terminalManager.openTerminal(
@@ -506,11 +737,38 @@ async function openTerminal(item?: ServerTreeItem): Promise<void> {
     }
 }
 
+async function editConnectionFromExplorer(uri?: vscode.Uri): Promise<void> {
+    if (!uri || (uri.scheme !== 'ptero' && uri.scheme !== 'sftp')) {
+        vscode.window.showErrorMessage('Please right-click a connected remote folder to edit connection details.');
+        return;
+    }
+
+    if (uri.scheme === 'sftp') {
+        const account = await accountManager.getAccountById(uri.authority);
+        if (!account || account.type !== 'sftpOnly') {
+            vscode.window.showErrorMessage('Could not locate the SFTP account for this folder.');
+            return;
+        }
+        await openEditAccountForm({ account } as ServerTreeItem);
+        return;
+    }
+
+    const item = await serverTreeProvider.findServer(uri.authority);
+    if (!item?.account || item.account.type !== 'pterodactyl') {
+        vscode.window.showErrorMessage('Could not locate the panel account for this folder.');
+        return;
+    }
+
+    await openEditAccountForm({ account: item.account } as ServerTreeItem);
+}
+
 async function restoreConnections() {
-    const folders = vscode.workspace.workspaceFolders?.filter(f => f.uri.scheme === 'ptero') || [];
+    const folders = vscode.workspace.workspaceFolders?.filter(
+        f => f.uri.scheme === 'ptero' || f.uri.scheme === 'sftp'
+    ) || [];
     if (folders.length === 0) return;
 
-    Logger.info(`Found ${folders.length} Pterodactyl workspace folders to restore.`);
+    Logger.info(`Found ${folders.length} remote workspace folders to restore.`);
 
     // Wait briefly for AccountManager to initialize if needed
     // But it's synchronous read.
@@ -520,6 +778,16 @@ async function restoreConnections() {
         const identifier = folder.uri.authority;
         Logger.info(`Restoring connection for ${folder.name} (${identifier})...`);
         try {
+            if (folder.uri.scheme === 'sftp') {
+                const account = await accountManager.getAccountById(identifier);
+                if (account && account.type === 'sftpOnly') {
+                    await connectToServer({ account } as ServerTreeItem, true);
+                } else {
+                    Logger.warn(`Could not find SFTP account for ${identifier} to restore.`);
+                }
+                continue;
+            }
+
             // Finding server might take a moment if it needs to fetch from API
             const item = await serverTreeProvider.findServer(identifier);
             if (item) {
@@ -536,6 +804,11 @@ async function restoreConnections() {
 async function sendPowerSignal(item: ServerTreeItem | undefined, signal: 'start' | 'stop' | 'restart' | 'kill'): Promise<void> {
     if (!item || !item.server || !item.account) { return; }
 
+    if (item.account.type !== 'pterodactyl') {
+        vscode.window.showErrorMessage('Power actions are only available for panel-backed servers.');
+        return;
+    }
+
     const actionName = signal.charAt(0).toUpperCase() + signal.slice(1);
 
     // Confirm Kill
@@ -548,7 +821,7 @@ async function sendPowerSignal(item: ServerTreeItem | undefined, signal: 'start'
     }
 
     try {
-        const client = new PterodactylClient(item.account.panelUrl, item.account.apiKey);
+        const client = new PterodactylClient(item.account.panelUrl, item.account.apiKey || '');
         await client.sendPowerAction(item.server.uuid, signal);
         vscode.window.showInformationMessage(`Signal "${signal}" sent to "${item.server.name}".`);
 
@@ -566,5 +839,7 @@ export function deactivate() {
     accountManager?.dispose();
     serverTreeProvider?.dispose();
     fileSystemProvider?.dispose();
+    sftpFileSystemProvider?.dispose();
+    remoteDecorationProvider?.dispose();
     terminalManager?.dispose();
 }

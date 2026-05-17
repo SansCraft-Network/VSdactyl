@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 minhmcpc
+Copyright (c) 2026 SansCraft Network Corp
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

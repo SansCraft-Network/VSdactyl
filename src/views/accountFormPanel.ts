@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { PteroAccount } from '../api/pterodactylClient';
-import * as util from 'util';
+import { PterodactylAccount } from '../api/pterodactylClient';
 import { Logger } from '../utils/logger';
 import { utils } from 'ssh2';
 
@@ -11,8 +10,9 @@ export class AccountFormPanel {
 
     private constructor(
         panel: vscode.WebviewPanel,
-        private readonly onSubmit: (account: Omit<PteroAccount, 'id'>) => void,
-        editAccount?: PteroAccount,
+        private readonly extensionUri: vscode.Uri,
+        private readonly onSubmit: (account: Omit<PterodactylAccount, 'id'>) => void,
+        editAccount?: PterodactylAccount,
     ) {
         this.panel = panel;
         this.panel.webview.html = this.getHtml(editAccount);
@@ -104,8 +104,8 @@ export class AccountFormPanel {
 
     static show(
         extensionUri: vscode.Uri,
-        onSubmit: (account: Omit<PteroAccount, 'id'>) => void,
-        editAccount?: PteroAccount,
+        onSubmit: (account: Omit<PterodactylAccount, 'id'>) => void,
+        editAccount?: PterodactylAccount,
     ): void {
         if (AccountFormPanel.currentPanel) {
             AccountFormPanel.currentPanel.panel.reveal();
@@ -114,7 +114,7 @@ export class AccountFormPanel {
 
         const panel = vscode.window.createWebviewPanel(
             'pterodactylAccountForm',
-            editAccount ? `Edit: ${editAccount.name}` : 'Add Pterodactyl Account',
+            editAccount ? `Edit: ${editAccount.name}` : 'Add VSDactyl Account',
             vscode.ViewColumn.One,
             {
                 enableScripts: true,
@@ -122,10 +122,10 @@ export class AccountFormPanel {
             }
         );
 
-        AccountFormPanel.currentPanel = new AccountFormPanel(panel, onSubmit, editAccount);
+        AccountFormPanel.currentPanel = new AccountFormPanel(panel, extensionUri, onSubmit, editAccount);
     }
 
-    private getHtml(editAccount?: PteroAccount): string {
+    private getHtml(editAccount?: PterodactylAccount): string {
         const name = editAccount?.name || '';
         const panelUrl = editAccount?.panelUrl || '';
         const apiKey = editAccount?.apiKey || '';
@@ -136,33 +136,37 @@ export class AccountFormPanel {
         const publicKeyData = editAccount?.publicKeyData || '';
         const username = editAccount?.username || '';
         const authMethod = editAccount?.authMethod || 'api-key';
+        const logoUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'logo.svg'));
 
         return /*html*/ `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pterodactyl Account</title>
+    <title>VSDactyl Account</title>
     <style>
         :root {
-            --ptero-bg: #1e1e3f;
-            --ptero-panel: #2d2d55;
-            --ptero-input: #151529;
-            --ptero-border: #434370;
-            --ptero-primary: #6c5ce7;
-            --ptero-primary-hover: #5b4cc4;
-            --ptero-text: #e1e1e6;
-            --ptero-text-secondary: #a0a0b0;
-            --ptero-danger: #ff4757;
-            --ptero-success: #2ecc71;
+            --ptero-bg: #081622;
+            --ptero-panel: #0f2638;
+            --ptero-input: #0b1d2c;
+            --ptero-border: rgba(10, 58, 102, 0.45);
+            --ptero-primary: #0a3a66;
+            --ptero-primary-hover: #073b61;
+            --ptero-text: #f4f1e6;
+            --ptero-text-secondary: rgba(244, 241, 230, 0.72);
+            --ptero-danger: #ff6b6b;
+            --ptero-success: #24e8f5;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
             color: var(--ptero-text);
-            background: var(--ptero-bg);
+            background:
+                radial-gradient(circle at top left, rgba(36, 232, 245, 0.14), transparent 30%),
+                radial-gradient(circle at bottom right, rgba(10, 58, 102, 0.32), transparent 42%),
+                linear-gradient(180deg, #07111c 0%, var(--ptero-bg) 100%);
             padding: 40px 24px;
             display: flex;
             justify-content: center;
@@ -172,25 +176,46 @@ export class AccountFormPanel {
         .container {
             width: 100%;
             max-width: 600px;
-            background: var(--ptero-panel);
+            background: linear-gradient(180deg, rgba(15, 38, 56, 0.96), rgba(8, 22, 34, 0.98));
             padding: 32px;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border-radius: 18px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.35);
             border: 1px solid var(--ptero-border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(36, 232, 245, 0.07), transparent 40%, rgba(10, 58, 102, 0.09));
+            pointer-events: none;
         }
 
         h1 {
             font-size: 24px; 
-            font-weight: 700; 
+            font-weight: 800; 
             margin-bottom: 28px;
             color: #fff;
             display: flex; 
             align-items: center; 
-            gap: 12px;
+            gap: 14px;
             border-bottom: 2px solid var(--ptero-border);
             padding-bottom: 16px;
+            position: relative;
+            z-index: 1;
         }
-        h1::before { content: '🦕'; font-size: 28px; }
+
+        .brand-mark {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 6px;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+            flex: 0 0 auto;
+        }
 
         h3 { 
             font-size: 15px; 
@@ -273,7 +298,7 @@ export class AccountFormPanel {
         button.primary { 
             background: var(--ptero-primary); 
             color: #fff; 
-            box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+            box-shadow: 0 8px 18px rgba(10, 58, 102, 0.34);
         }
         button.primary:hover { background: var(--ptero-primary-hover); }
 
@@ -392,9 +417,9 @@ export class AccountFormPanel {
         }
 
         .key-upload-info {
-            background: rgba(46, 204, 113, 0.1);
-            border: 1px solid rgba(46, 204, 113, 0.3);
-            color: #2ecc71;
+            background: rgba(36, 232, 245, 0.08);
+            border: 1px solid rgba(36, 232, 245, 0.26);
+            color: var(--ptero-success);
             padding: 12px;
             border-radius: 8px;
             font-size: 13px;
@@ -405,7 +430,7 @@ export class AccountFormPanel {
 </head>
 <body>
     <div class="container">
-        <h1>${editAccount ? 'Edit Account' : 'Add New Account'}</h1>
+        <h1><img class="brand-mark" src="${logoUri}" alt="VSDactyl" />${editAccount ? 'Edit Account' : 'Add New Account'}</h1>
 
         <div class="form-group">
             <label>Display Name <span class="required">*</span></label>
@@ -416,7 +441,7 @@ export class AccountFormPanel {
         <div class="form-group">
             <label>Panel URL <span class="required">*</span></label>
             <input type="url" id="panelUrl" value="${this.escapeHtml(panelUrl)}" placeholder="https://panel.example.com" />
-            <div class="hint">The URL of your Pterodactyl panel home page</div>
+            <div class="hint">The URL of your panel home page</div>
             <div class="error" id="panelUrlError">Please enter a valid URL</div>
         </div>
 
@@ -488,7 +513,7 @@ export class AccountFormPanel {
 
             <div id="autoKeyInfo" class="key-upload-info">
                 <strong>✨ Auto-Setup Enabled:</strong><br>
-                When you click "Add Account", we will generate a secure Ed25519 key pair, save it to your <code>.ssh</code> folder, and upload the public key to this Pterodactyl account automatically.
+                When you click "Add Account", we will generate a secure Ed25519 key pair, save it to your <code>.ssh</code> folder, and upload the public key to this panel account automatically.
             </div>
 
             <div class="error" id="sshKeyError">SSH private key path or content is required</div>

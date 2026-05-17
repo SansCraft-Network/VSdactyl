@@ -5,7 +5,7 @@ export class Logger {
 
     static initialize() {
         if (!this.outputChannel) {
-            this.outputChannel = vscode.window.createOutputChannel('Pterodactyl');
+            this.outputChannel = vscode.window.createOutputChannel('VSDactyl');
         }
     }
 

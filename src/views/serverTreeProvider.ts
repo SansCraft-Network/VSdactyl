@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { AccountManager } from '../accounts/accountManager';
-import { PterodactylClient, PteroAccount, PteroServer } from '../api/pterodactylClient';
+import { PterodactylClient, PterodactylAccount, PteroAccount, PteroServer } from '../api/pterodactylClient';
 
 export type TreeNodeType = 'account' | 'server' | 'serverInfo' | 'loading' | 'error' | 'empty';
 
@@ -21,8 +21,20 @@ export class ServerTreeItem extends vscode.TreeItem {
         switch (this.nodeType) {
             case 'account':
                 this.iconPath = new vscode.ThemeIcon('account');
-                this.description = this.account?.panelUrl?.replace(/https?:\/\//, '') || '';
-                this.tooltip = `Account: ${this.account?.name}\nPanel: ${this.account?.panelUrl}\nUser: ${this.account?.username}\nAuth: ${this.account?.authMethod}`;
+                if (this.account?.type === 'pterodactyl') {
+                    this.contextValue = 'account';
+                    this.description = this.account.panelUrl.replace(/https?:\/\//, '');
+                    this.tooltip = `Account: ${this.account.name}\nPanel: ${this.account.panelUrl}\nUser: ${this.account.username}\nAuth: ${this.account.authMethod}`;
+                } else {
+                    this.contextValue = 'account-sftp';
+                    this.description = `${this.account?.host || ''}:${this.account?.port || ''}`;
+                    this.tooltip = `Account: ${this.account?.name}\nHost: ${this.account?.host}\nPort: ${this.account?.port}\nUser: ${this.account?.username}\nAuth: ${this.account?.sftpAuthMethod}`;
+                    this.command = {
+                        command: 'pterodactyl.connectServer',
+                        title: 'Connect to Server',
+                        arguments: [this],
+                    };
+                }
                 break;
 
             case 'server':
@@ -209,7 +221,7 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
     async getChildren(element?: ServerTreeItem): Promise<ServerTreeItem[]> {
         if (!element) {
             // Root level: show accounts
-            const accounts = this.accountManager.getAccounts();
+            const accounts = await this.accountManager.getAccounts();
             if (accounts.length === 0) {
                 return [
                     new ServerTreeItem(
@@ -230,7 +242,13 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
         }
 
         if (element.nodeType === 'account' && element.account) {
-            return this.fetchServers(element.account);
+            if (element.account.type === 'pterodactyl') {
+                return this.fetchServers(element.account);
+            }
+
+            return [
+                new ServerTreeItem('Standalone SFTP connection', 'empty', vscode.TreeItemCollapsibleState.None),
+            ];
         }
 
         // Server children: show info details
@@ -267,7 +285,7 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
         return items;
     }
 
-    private async fetchServers(account: PteroAccount): Promise<ServerTreeItem[]> {
+    private async fetchServers(account: PterodactylAccount): Promise<ServerTreeItem[]> {
         // Check cache first
         if (this.serverCache.has(account.id)) {
             const servers = this.serverCache.get(account.id)!;
@@ -287,7 +305,7 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
 
         try {
             this.loadingAccounts.add(account.id);
-            const client = new PterodactylClient(account.panelUrl, account.apiKey);
+            const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
             const servers = await client.listServers();
 
             // Fetch live status for servers that don't have a special status
@@ -348,13 +366,16 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
     }
 
     async findServer(identifier: string): Promise<ServerTreeItem | undefined> {
+        const accounts = await this.accountManager.getAccounts();
+        const accountById = new Map(accounts.map(account => [account.id, account]));
+
         // Helper to search in cache
         const searchCache = () => {
             for (const [accountId, servers] of this.serverCache.entries()) {
                 const server = servers.find(s => s.identifier === identifier);
                 if (server) {
-                    const account = this.accountManager.getAccounts().find(a => a.id === accountId);
-                    if (account) {
+                    const account = accountById.get(accountId);
+                    if (account && account.type === 'pterodactyl') {
                         return new ServerTreeItem(server.name, 'server', vscode.TreeItemCollapsibleState.Collapsed, account, server);
                     }
                 }
@@ -367,8 +388,10 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
         if (found) return found;
 
         // If not found, fetch all accounts (re-populate cache)
-        const accounts = this.accountManager.getAccounts();
         for (const account of accounts) {
+            if (account.type !== 'pterodactyl') {
+                continue;
+            }
             try {
                 // parallelize? maybe sequentially to stop early
                 await this.fetchServers(account);

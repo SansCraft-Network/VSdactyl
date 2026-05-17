@@ -1,19 +1,7 @@
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger';
 
-export interface PteroAccount {
-    id: string;
-    name: string;
-    panelUrl: string;
-    apiKey: string;
-    sftpAuthMethod: 'password' | 'ssh-key'; // SFTP authentication method
-    password: string; // Panel login password (for SFTP password auth)
-    privateKeyPath: string; // Path to SSH private key file
-    privateKeyData: string; // Pasted/generated SSH private key content
-    publicKeyData?: string; // Generated SSH public key content (optional, added for reference)
-    username: string;
-    authMethod: 'api-key' | 'cookie';
-}
+export * from '../accounts/types';
 
 export interface PteroServer {
     id: string;

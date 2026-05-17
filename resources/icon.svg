@@ -1,6 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-  <polyline points="17 8 12 3 7 8"/>
-  <line x1="12" y1="3" x2="12" y2="15"/>
-  <circle cx="12" cy="12" r="10" stroke-dasharray="2 2" opacity="0.3"/>
+<?xml version="1.0" encoding="utf-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 345 345" xmlns:bx="https://boxy-svg.com">
+  <circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="61.614" cy="58.684" r="44.872"/>
+  <circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="282.183" cy="58.601" r="44.872"/>
+  <circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="61.367" cy="283.166" r="44.872"/>
+  <circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="281.936" cy="283.085" r="44.872"/>
+  <circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="172.337" cy="170.916" r="44.872"/>
+  <rect x="100.667" y="47.995" width="142.447" height="22.378" style="fill: rgb(10, 58, 102); stroke: rgb(10, 58, 102); stroke-width: 0; paint-order: stroke;"/>
+  <rect x="101.479" y="272.315" width="141.427" height="22.378" style="fill: rgb(10, 58, 102); stroke: rgb(10, 58, 102); stroke-width: 0; paint-order: stroke;"/>
+  <circle style="fill: none; stroke: rgb(10, 58, 102); stroke-width: 13;" cx="172.863" cy="170.617" r="44.872"/>
+  <line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102); transform-origin: 226.259px 226.418px;" x1="253.156" y1="198.824" x2="199.363" y2="254.013" transform="matrix(0, 1, -1, 0, 0.000007, 0.000014)"/>
+  <line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="255.549" y1="254.893" x2="199.249" y2="198.392"/>
+  <line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102);" x1="142.733" y1="200.467" x2="88.939" y2="255.655"/>
+  <line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5; transform-origin: 104.748px 239.791px;" x1="120.936" y1="223.526" x2="88.563" y2="256.056" transform="matrix(-1, 0, 0, -1, 0.000017, 0.000017)"/>
+  <line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102); transform-origin: 116.896px 115.861px;" x1="143.794" y1="88.268" x2="90" y2="143.457" transform="matrix(0, 1, -1, 0, 0.000006, -0.000009)"/>
+  <line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="144.593" y1="144.232" x2="88.453" y2="86.048"/>
+  <line style="fill: none; stroke-width: 20; stroke: rgb(10, 58, 102);" x1="255.039" y1="87.176" x2="201.246" y2="142.364"/>
+  <line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="254.952" y1="85.686" x2="224.325" y2="116.556"/>
+  <circle style="stroke: rgb(0, 0, 0); stroke-width: 0; fill: rgb(36, 232, 245);" cx="223.85" cy="118.3" r="8.148"/>
+  <circle style="fill: rgb(36, 232, 245); stroke: rgb(10, 58, 102); stroke-width: 0;" cx="189.675" cy="299.568" r="14.02" transform="matrix(0.55051, 0, 0, 0.530079, 15.312297, 64.967896)"/>
+  <line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="243.688" y1="58.312" x2="99.913" y2="57.882"/>
+  <line style="fill: none; stroke: rgb(36, 232, 245); stroke-width: 5;" x1="243.412" y1="283.56" x2="99.949" y2="283.467"/>
+  <text style="fill: rgb(10, 58, 102); font-family: Inter; font-size: 140px; font-weight: 900; stroke: rgb(10, 58, 102); stroke-width: 0px; white-space: pre;" x="16.003" y="220.02">S</text>
+  <defs>
+    <style bx:fonts="Inter">@import url(https://fonts.googleapis.com/css2?family=Inter%3Aital%2Cwght%400%2C100..900%3B1%2C100..900&amp;display=swap);</style>
+  </defs>
+  <text style="fill: rgb(10, 58, 102); font-family: Inter; font-size: 140px; font-weight: 900; white-space: pre;" x="231.121" y="220.02">C</text>
 </svg>

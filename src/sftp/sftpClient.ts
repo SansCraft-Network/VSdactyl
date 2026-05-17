@@ -1,4 +1,8 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { Client, SFTPWrapper, ConnectConfig } from 'ssh2';
 import { Logger } from '../utils/logger';
 
@@ -13,6 +17,7 @@ export interface SftpConnectionInfo {
     username: string; // format: <panelUsername>.<serverIdentifier>
     privateKey?: string; // PEM-format private key
     password?: string; // fallback if no key
+    knownHostsPath?: string;
 }
 
 export interface SftpFileEntry {
@@ -26,6 +31,21 @@ export interface SftpFileEntry {
     mode: number;
 }
 
+function isENOENTMessage(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return normalized.includes('no such file') || normalized.includes('not found');
+}
+
+function isAlreadyExistsMessage(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return normalized.includes('already exists') || normalized.includes('file exists') || normalized.includes('eexist');
+}
+
+function isNotEmptyMessage(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return normalized.includes('directory not empty') || normalized.includes('not empty') || normalized.includes('enotempty');
+}
+
 export class SftpClient {
     private client: Client | null = null;
     private sftp: SFTPWrapper | null = null;
@@ -37,6 +57,73 @@ export class SftpClient {
     // Track consecutive failures to prevent infinite retry loops
     private consecutiveFailures = 0;
     private static readonly MAX_RETRIES = 1; // Reduced from 3 to 1 to fail fast and let user retry manually
+
+    private getKnownHostsPath(): string {
+        if (this.connectionInfo.knownHostsPath) {
+            return this.connectionInfo.knownHostsPath;
+        }
+        return path.join(os.homedir(), '.sanscraft-vsdactyl-known-hosts.json');
+    }
+
+    private getKnownHostKey(): string {
+        return `${this.connectionInfo.host}:${this.connectionInfo.port}`;
+    }
+
+    private readKnownHosts(): Record<string, string> {
+        const knownHostsPath = this.getKnownHostsPath();
+        try {
+            if (!fs.existsSync(knownHostsPath)) {
+                return {};
+            }
+            const raw = fs.readFileSync(knownHostsPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                return parsed as Record<string, string>;
+            }
+        } catch (err: any) {
+            log(`  ⚠️ Failed to read known hosts file: ${err.message}`);
+        }
+        return {};
+    }
+
+    private writeKnownHosts(entries: Record<string, string>): void {
+        const knownHostsPath = this.getKnownHostsPath();
+        try {
+            const dir = path.dirname(knownHostsPath);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(knownHostsPath, JSON.stringify(entries, null, 2), { encoding: 'utf-8' });
+        } catch (err: any) {
+            log(`  ⚠️ Failed to persist known host fingerprint: ${err.message}`);
+        }
+    }
+
+    private getFingerprint(hostKey: Buffer): string {
+        const digest = crypto.createHash('sha256').update(hostKey).digest('base64');
+        return `sha256:${digest}`;
+    }
+
+    private verifyAndStoreHostKey(hostKey: Buffer): boolean {
+        const fingerprint = this.getFingerprint(hostKey);
+        const knownHosts = this.readKnownHosts();
+        const hostKeyId = this.getKnownHostKey();
+        const existing = knownHosts[hostKeyId];
+
+        if (!existing) {
+            knownHosts[hostKeyId] = fingerprint;
+            this.writeKnownHosts(knownHosts);
+            log(`  ✅ Learned new host fingerprint for ${hostKeyId}`);
+            return true;
+        }
+
+        if (existing === fingerprint) {
+            return true;
+        }
+
+        log(`  ❌ Host key mismatch for ${hostKeyId}`);
+        log(`  ⚠️ Stored: ${existing}`);
+        log(`  ⚠️ Current: ${fingerprint}`);
+        return false;
+    }
 
     constructor(info: SftpConnectionInfo) {
         this.connectionInfo = info;
@@ -56,7 +143,7 @@ export class SftpClient {
 
         // Check retry limit
         if (this.consecutiveFailures >= SftpClient.MAX_RETRIES) {
-            const msg = `Too many connection failures (${this.consecutiveFailures}). Use "Pterodactyl: Connect to Server" to retry.`;
+            const msg = `Too many connection failures (${this.consecutiveFailures}). Use "VSDactyl: Connect to Server" to retry.`;
             log(`  🛑 ${msg}`);
             throw new Error(msg);
         }
@@ -90,6 +177,7 @@ export class SftpClient {
                 port,
                 username,
                 readyTimeout: 10000, // Reduced from 15000
+                hostVerifier: (hostKey: Buffer) => this.verifyAndStoreHostKey(hostKey),
                 keepaliveInterval: 10000,
                 keepaliveCountMax: 3,
                 algorithms: {
@@ -132,11 +220,10 @@ export class SftpClient {
 
             // Auth method
             if (this.connectionInfo.privateKey) {
-                const keyPreview = this.connectionInfo.privateKey.substring(0, 50).replace(/\n/g, ' ');
-                log(`  🔑 Auth: SSH private key (${keyPreview}...)`);
+                log(`  🔑 Auth: SSH private key`);
                 config.privateKey = this.connectionInfo.privateKey;
             } else if (this.connectionInfo.password) {
-                log(`  🔑 Auth: Password (${this.connectionInfo.password.length} chars)`);
+                log(`  🔑 Auth: Password`);
                 config.password = this.connectionInfo.password;
             } else {
                 const msg = 'No authentication method configured (no key and no password)';
@@ -151,7 +238,7 @@ export class SftpClient {
             const timeout = setTimeout(() => {
                 if (!settled) {
                     settled = true;
-                    const msg = `Connection timed out after 15s to ${host}:${port}`;
+                    const msg = `Connection timed out after 12s to ${host}:${port}`;
                     log(`  ❌ TIMEOUT: ${msg}`);
                     log(`  💡 Check: (1) SFTP host/port correct? (2) Firewall blocking? (3) Server running?`);
                     this.consecutiveFailures++;
@@ -301,6 +388,76 @@ export class SftpClient {
         return this.sftp;
     }
 
+    private static normalizeRemotePath(remotePath: string): string {
+        let normalized = (remotePath || '/').replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+        if (!normalized.startsWith('/')) {
+            normalized = `/${normalized}`;
+        }
+        if (normalized.length > 1 && normalized.endsWith('/')) {
+            normalized = normalized.slice(0, -1);
+        }
+        return normalized || '/';
+    }
+
+    private async pathKind(remotePath: string): Promise<'dir' | 'file' | 'missing'> {
+        const sftp = await this.ensureConnected();
+        return new Promise((resolve, reject) => {
+            sftp.lstat(remotePath, (err, attrs) => {
+                if (err) {
+                    if (isENOENTMessage(err.message ?? '')) {
+                        resolve('missing');
+                        return;
+                    }
+                    reject(err);
+                    return;
+                }
+
+                const mode = attrs.mode ?? 0;
+                const isDir = (mode & 0o40000) !== 0;
+                resolve(isDir ? 'dir' : 'file');
+            });
+        });
+    }
+
+    private async unlinkFile(remotePath: string): Promise<void> {
+        const sftp = await this.ensureConnected();
+        return new Promise((resolve, reject) => {
+            sftp.unlink(remotePath, (err) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve();
+            });
+        });
+    }
+
+    private async removeDir(remotePath: string): Promise<void> {
+        const sftp = await this.ensureConnected();
+        return new Promise((resolve, reject) => {
+            sftp.rmdir(remotePath, (err) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve();
+            });
+        });
+    }
+
+    private async renameRaw(oldPath: string, newPath: string): Promise<void> {
+        const sftp = await this.ensureConnected();
+        return new Promise((resolve, reject) => {
+            sftp.rename(oldPath, newPath, (err) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve();
+            });
+        });
+    }
+
     async list(directory: string): Promise<SftpFileEntry[]> {
         const sftp = await this.ensureConnected();
         log(`LIST ${directory}`);
@@ -411,13 +568,36 @@ export class SftpClient {
     }
 
     async mkdir(dirPath: string): Promise<void> {
+        const normalizedPath = SftpClient.normalizeRemotePath(dirPath);
+        if (normalizedPath === '/' || normalizedPath === '') {
+            return;
+        }
+
+        const kind = await this.pathKind(normalizedPath);
+        if (kind === 'dir') {
+            return;
+        }
+        if (kind === 'file') {
+            throw new Error(`Cannot create directory: path exists and is not a directory: ${normalizedPath}`);
+        }
+
+        const parent = path.posix.dirname(normalizedPath);
+        if (parent !== '/' && parent.length > 0) {
+            await this.mkdir(parent);
+        }
+
         const sftp = await this.ensureConnected();
-        log(`MKDIR ${dirPath}`);
+        log(`MKDIR ${normalizedPath}`);
         return new Promise((resolve, reject) => {
-            sftp.mkdir(dirPath, (err) => {
+            sftp.mkdir(normalizedPath, (err) => {
                 if (err) {
+                    if (isAlreadyExistsMessage(err.message ?? '')) {
+                        log(`  ℹ️ MKDIR exists: ${normalizedPath}`);
+                        resolve();
+                        return;
+                    }
                     log(`  ❌ MKDIR failed: ${err.message}`);
-                    reject(new Error(`Failed to create directory ${dirPath}: ${err.message}`));
+                    reject(new Error(`Failed to create directory ${normalizedPath}: ${err.message}`));
                     return;
                 }
                 log(`  ✅ Created`);
@@ -426,43 +606,79 @@ export class SftpClient {
         });
     }
 
-    async delete(filePath: string): Promise<void> {
-        const sftp = await this.ensureConnected();
-        log(`DELETE ${filePath}`);
-        return new Promise((resolve, reject) => {
-            sftp.unlink(filePath, (err) => {
-                if (err) {
-                    sftp.rmdir(filePath, (err2) => {
-                        if (err2) {
-                            log(`  ❌ DELETE failed: ${err2.message}`);
-                            reject(new Error(`Failed to delete ${filePath}: ${err2.message}`));
-                            return;
-                        }
-                        log(`  ✅ Deleted (dir)`);
-                        resolve();
-                    });
-                    return;
-                }
-                log(`  ✅ Deleted (file)`);
-                resolve();
-            });
-        });
+    private async deleteRecursive(targetPath: string): Promise<void> {
+        const entries = await this.list(targetPath);
+        for (const entry of entries) {
+            const childPath = path.posix.join(targetPath, entry.name);
+            if (entry.isDirectory) {
+                await this.deleteRecursive(childPath);
+            } else {
+                await this.unlinkFile(childPath);
+            }
+        }
+        await this.removeDir(targetPath);
     }
 
-    async rename(oldPath: string, newPath: string): Promise<void> {
-        const sftp = await this.ensureConnected();
-        log(`RENAME ${oldPath} → ${newPath}`);
-        return new Promise((resolve, reject) => {
-            sftp.rename(oldPath, newPath, (err) => {
-                if (err) {
-                    log(`  ❌ RENAME failed: ${err.message}`);
-                    reject(new Error(`Failed to rename ${oldPath} to ${newPath}: ${err.message}`));
-                    return;
-                }
-                log(`  ✅ Renamed`);
-                resolve();
-            });
-        });
+    async delete(filePath: string, options?: { recursive?: boolean }): Promise<void> {
+        const normalizedPath = SftpClient.normalizeRemotePath(filePath);
+        const recursive = options?.recursive ?? false;
+        log(`DELETE ${normalizedPath} (recursive=${recursive})`);
+
+        const kind = await this.pathKind(normalizedPath);
+        if (kind === 'missing') {
+            throw new Error(`No such file: ${normalizedPath}`);
+        }
+
+        try {
+            if (kind === 'file') {
+                await this.unlinkFile(normalizedPath);
+                log(`  ✅ Deleted (file)`);
+                return;
+            }
+
+            if (!recursive) {
+                await this.removeDir(normalizedPath);
+                log(`  ✅ Deleted (dir)`);
+                return;
+            }
+
+            await this.deleteRecursive(normalizedPath);
+            log(`  ✅ Deleted (dir recursive)`);
+        } catch (err: any) {
+            if (isNotEmptyMessage(err.message ?? '')) {
+                throw new Error(`Directory not empty: ${normalizedPath}`);
+            }
+            throw new Error(`Failed to delete ${normalizedPath}: ${err.message}`);
+        }
+    }
+
+    async rename(oldPath: string, newPath: string, options?: { overwrite?: boolean }): Promise<void> {
+        const sourcePath = SftpClient.normalizeRemotePath(oldPath);
+        const targetPath = SftpClient.normalizeRemotePath(newPath);
+        const overwrite = options?.overwrite ?? false;
+
+        log(`RENAME ${sourcePath} → ${targetPath} (overwrite=${overwrite})`);
+
+        const sourceKind = await this.pathKind(sourcePath);
+        if (sourceKind === 'missing') {
+            throw new Error(`No such file: ${sourcePath}`);
+        }
+
+        const targetKind = await this.pathKind(targetPath);
+        if (targetKind !== 'missing' && !overwrite) {
+            throw new Error(`File exists: ${targetPath}`);
+        }
+
+        if (targetKind !== 'missing' && overwrite) {
+            await this.delete(targetPath, { recursive: true });
+        }
+
+        try {
+            await this.renameRaw(sourcePath, targetPath);
+            log(`  ✅ Renamed`);
+        } catch (err: any) {
+            throw new Error(`Failed to rename ${sourcePath} to ${targetPath}: ${err.message}`);
+        }
     }
 
     async chmod(filePath: string, mode: number): Promise<void> {

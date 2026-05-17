@@ -1,6 +1,6 @@
-# Contributing to Pterodactyl SFTP
+# Contributing to VSDactyl
 
-Thank you for your interest in contributing to the Pterodactyl SFTP extension!
+Thank you for your interest in contributing to VSDactyl, SansCraft Network's official fork!
 
 ## Reporting Issues
 
