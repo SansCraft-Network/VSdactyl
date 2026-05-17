@@ -195,6 +195,37 @@ function formatLimitCPU(cpu: number): string {
     return `${cpu}%`;
 }
 
+export class ServerTreeDragAndDropController implements vscode.TreeDragAndDropController<ServerTreeItem> {
+    readonly dragMimeTypes = ['text/uri-list'];
+    readonly dropMimeTypes = ['text/uri-list'];
+
+    async handleDrag(source: readonly ServerTreeItem[], dataTransfer: vscode.DataTransfer): Promise<void> {
+        const uris: vscode.Uri[] = [];
+
+        for (const item of source) {
+            if (item.nodeType === 'server' && item.server) {
+                uris.push(vscode.Uri.parse(`ptero://${item.server.identifier}/`));
+                continue;
+            }
+
+            if (item.nodeType === 'account' && item.account?.type === 'sftpOnly') {
+                uris.push(vscode.Uri.parse(`sftp://${item.account.id}/`));
+            }
+        }
+
+        if (uris.length === 0) {
+            return;
+        }
+
+        const uriListPayload = uris.map((uri) => uri.toString()).join('\r\n');
+        dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uriListPayload));
+    }
+
+    async handleDrop(_target: ServerTreeItem | undefined, _dataTransfer: vscode.DataTransfer): Promise<void> {
+        // No-op: this controller is only used as a drag source into Explorer.
+    }
+}
+
 export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ServerTreeItem | undefined | null>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;

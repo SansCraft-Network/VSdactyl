@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VSDactyl - Guide pratique</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        :root {
+            --primary: #0a3a66; --primary-light: #24e8f5; --accent: #24e8f5; --success: #2ecc71; --danger: #ff4757;
+            --bg: #07111c; --sidebar-bg: #0b1d2c; --card-bg: #10283b; --border: rgba(255,255,255,.08);
+            --text-main: #e1e1f0; --text-muted: #9495b0; --text-white: #fff; --radius-lg: 16px; --radius-md: 12px; --radius-sm: 8px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; scroll-behavior: smooth; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text-main); line-height: 1.7; display: flex; min-height: 100vh; }
+        .sidebar { width: 300px; height: 100vh; background: var(--sidebar-bg); border-right: 1px solid var(--border); position: fixed; padding: 40px 24px; overflow-y: auto; }
+        .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 48px; text-decoration: none; }
+        .brand-icon { font-size: 32px; filter: drop-shadow(0 0 10px var(--primary)); }
+        .brand-name { font-size: 20px; font-weight: 800; color: var(--text-white); }
+        .nav-list { list-style: none; }
+        .nav-group-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1.5px; margin: 24px 0 12px 12px; }
+        .nav-item a { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: var(--text-muted); text-decoration: none; font-size: 14px; font-weight: 600; border-radius: var(--radius-md); }
+        .nav-item a:hover { color: var(--primary-light); background: rgba(36,232,245,.12); }
+        .nav-item a.active { color: var(--text-white); background: var(--primary); box-shadow: 0 4px 15px rgba(10,58,102,.35); }
+        .content { flex: 1; margin-left: 300px; padding: 80px 10%; max-width: 1200px; }
+        .version-badge { display: inline-block; padding: 6px 12px; background: rgba(10,58,102,.24); color: var(--primary-light); border: 1px solid rgba(36,232,245,.3); border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 16px; }
+        h1 { font-size: 48px; font-weight: 800; color: var(--text-white); line-height: 1.2; margin-bottom: 24px; }
+        .hero-desc { font-size: 18px; color: var(--text-muted); max-width: 650px; }
+        section { margin-bottom: 100px; scroll-margin-top: 40px; }
+        h2 { font-size: 32px; font-weight: 700; color: var(--text-white); margin-bottom: 32px; display: flex; align-items: center; gap: 16px; }
+        h2::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 32px; margin-bottom: 24px; }
+        .card:hover { border-color: rgba(36,232,245,.26); }
+        .step-num { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: var(--primary); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 800; margin-bottom: 20px; }
+        .card h3 { font-size: 20px; color: var(--text-white); margin-bottom: 16px; }
+        .card p, ul, ol { color: var(--text-muted); }
+        ul, ol { margin-left: 20px; }
+        li { margin-bottom: 10px; }
+        code { background: rgba(0,0,0,.3); color: var(--accent); padding: 4px 8px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+        .highlight-box { background: rgba(10,58,102,.22); border-left: 4px solid var(--primary); padding: 20px; border-radius: var(--radius-sm); margin: 24px 0; }
+        .tip-box { background: rgba(46,204,113,.05); border-left: 4px solid var(--success); padding: 20px; border-radius: var(--radius-sm); margin: 24px 0; }
+        .btn-demo { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; background: var(--primary); color: #fff; text-decoration: none; border-radius: var(--radius-sm); font-weight: 600; font-size: 14px; margin-top: 10px; }
+        footer { margin-top: 120px; padding: 40px 0; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 14px; }
+        .heart { color: var(--danger); }
+        @media (max-width: 1024px) { .sidebar { display: none; } .content { margin-left: 0; padding: 60px 24px; } }
+    </style>
+</head>
+
+<body>
+    <nav class="sidebar">
+        <a href="#" class="brand"><span class="brand-icon">🦕</span><span class="brand-name">VSDactyl</span></a>
+        <div class="nav-group-title">Démarrage</div>
+        <ul class="nav-list">
+            <li class="nav-item"><a href="#jump-start" class="active">🚀 Vue d'ensemble</a></li>
+            <li class="nav-item"><a href="#installation">📥 Installation rapide</a></li>
+        </ul>
+        <div class="nav-group-title">Utilisation</div>
+        <ul class="nav-list">
+            <li class="nav-item"><a href="#add-account">🔑 Ajouter un compte</a></li>
+            <li class="nav-item"><a href="#ssh-auto">✨ SSH Auto-Setup</a></li>
+            <li class="nav-item"><a href="#sftp-connect">📂 Gestion des fichiers</a></li>
+            <li class="nav-item"><a href="#terminal">💻 Console / Terminal</a></li>
+        </ul>
+        <div class="nav-group-title">Support</div>
+        <ul class="nav-list"><li class="nav-item"><a href="#troubleshooting">🛠️ Dépannage</a></li></ul>
+    </nav>
+
+    <div class="content">
+        <header id="jump-start">
+            <div class="version-badge">Version 2.1.x • Stable</div>
+            <h1>Bonjour,<br>bienvenue sur VSDactyl.</h1>
+            <p class="hero-desc">VSDactyl vous permet de gérer les fichiers et la console de vos serveurs distants directement dans VS Code, avec un flux rapide et sécurisé.</p>
+        </header>
+
+        <section id="installation">
+            <h2>Installation rapide</h2>
+            <div class="card">
+                <div class="step-num">1</div>
+                <h3>Ouvrir le Marketplace des extensions</h3>
+                <p>Utilisez <code>Ctrl + Shift + X</code> sur Windows/Linux ou <code>Cmd + Shift + X</code> sur macOS.</p>
+                <div class="highlight-box">Recherchez <strong>VSDactyl</strong>, cliquez sur <strong>Install</strong>, puis ouvrez la vue VSDactyl.</div>
+            </div>
+        </section>
+
+        <section id="add-account">
+            <h2>Première connexion</h2>
+            <div class="card">
+                <h3>Créer une clé API</h3>
+                <ol>
+                    <li>Ouvrez le tableau de bord de votre panel.</li>
+                    <li>Allez dans <strong>Account</strong>.</li>
+                    <li>Ouvrez <strong>API Credentials</strong>.</li>
+                    <li>Créez une nouvelle clé et copiez-la.</li>
+                </ol>
+            </div>
+            <div class="card">
+                <h3>L'ajouter dans VS Code</h3>
+                <ul>
+                    <li><strong>Display Name :</strong> Nom de votre choix.</li>
+                    <li><strong>Panel URL :</strong> Adresse de votre panel.</li>
+                    <li><strong>API Key :</strong> Collez la clé copiée.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="ssh-auto">
+            <h2>SSH Auto-Setup</h2>
+            <div class="tip-box"><strong>Conseil :</strong> L'authentification par clé SSH est plus sûre et plus fiable qu'un mot de passe.</div>
+            <div class="card">
+                <h3>Configuration en un clic</h3>
+                <p>Dans le formulaire, choisissez <strong>SSH Key</strong> puis activez <strong>Auto-configure SSH Key</strong>.</p>
+                <ul>
+                    <li>Génération locale d'une paire de clés.</li>
+                    <li>Envoi de la clé publique au panel.</li>
+                    <li>Enregistrement du chemin de clé privée.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="sftp-connect">
+            <h2>Gérer les fichiers comme en local</h2>
+            <div class="card">
+                <h3>Connexion et édition</h3>
+                <p>Cliquez droit sur un serveur puis <strong>Connect (SFTP)</strong>. Vous pouvez ensuite modifier, enregistrer, téléverser et organiser les fichiers depuis l'explorateur.</p>
+            </div>
+        </section>
+
+        <section id="terminal">
+            <h2>Terminal serveur</h2>
+            <div class="card">
+                <p>Utilisez <strong>Open Terminal</strong> dans le menu du serveur pour accéder aux logs et commandes sans quitter VS Code.</p>
+                <div class="highlight-box">Sortie console en temps réel et exécution rapide des commandes.</div>
+            </div>
+        </section>
+
+        <section id="troubleshooting">
+            <h2>Dépannage</h2>
+            <div class="card">
+                <h3>Problèmes d'authentification ou de clé</h3>
+                <p>Régénérez la clé SSH via l'auto-setup et vérifiez les informations du compte dans les paramètres VSDactyl.</p>
+            </div>
+            <div class="card">
+                <h3>Besoin d'aide ?</h3>
+                <p>Ouvrez un ticket (Issue) sur le dépôt du projet.</p>
+                <a href="https://github.com/SansCraft-Network/VSdactyl" class="btn-demo">Visiter GitHub</a>
+            </div>
+        </section>
+
+        <footer>
+            <p>Conçu avec soin <span class="heart">❤</span> par <strong>SansCraft Network</strong></p>
+            <p style="margin-top: 8px; font-size: 12px;">© 2026 VSDactyl - SansCraft Network's official fork</p>
+        </footer>
+    </div>
+
+    <script>
+        window.addEventListener('scroll', () => {
+            const sections = document.querySelectorAll('section, header');
+            const navLinks = document.querySelectorAll('.nav-item a');
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                if (pageYOffset >= sectionTop - 100) {
+                    current = section.getAttribute('id');
+                }
+            });
+            navLinks.forEach(link => {
+                link.classList.remove('active');
+                if (link.getAttribute('href').includes(current)) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

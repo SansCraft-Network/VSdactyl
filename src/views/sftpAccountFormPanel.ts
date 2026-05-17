@@ -66,12 +66,30 @@ export class SftpAccountFormPanel {
         const sftpAuthMethod = editAccount?.sftpAuthMethod || 'ssh-key';
         const privateKeyPath = editAccount?.privateKeyPath || '';
         const privateKeyData = editAccount?.privateKeyData || '';
-        const logoUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'logo.svg'));
+        const logoUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'icon.png'));
 
         return `<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>SFTP Account</title>
-        <style>body{font-family:system-ui,Segoe UI,Helvetica,Arial;margin:18px;color:#eaeaea;background:#07111c}label{display:block;margin-top:12px;font-size:13px}input,textarea,select{width:100%;padding:8px;margin-top:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:#091826;color:#fff}button{margin-top:14px;padding:8px 12px;border-radius:6px} .row{display:flex;gap:8px} .col{flex:1}</style>
-        </head><body>
-        <h2><img src="${logoUri}" style="width:34px;vertical-align:middle;margin-right:8px"/> ${editAccount ? 'Edit SFTP Account' : 'Add SFTP Account'}</h2>
+        <style>
+        :root{--sc-bg:#081622;--sc-panel:#0f2638;--sc-input:#0b1d2c;--sc-border:rgba(10,58,102,.45);--sc-primary:#0a3a66;--sc-primary-hover:#073b61;--sc-text:#f4f1e6;--sc-muted:rgba(244,241,230,.72);--sc-cyan:#24e8f5}
+        *{box-sizing:border-box}
+        body{font-family:'Inter','Segoe UI',system-ui,sans-serif;margin:0;padding:36px 20px;color:var(--sc-text);background:radial-gradient(circle at top left,rgba(36,232,245,.14),transparent 32%),radial-gradient(circle at bottom right,rgba(10,58,102,.34),transparent 44%),linear-gradient(180deg,#07111c 0%,var(--sc-bg) 100%);min-height:100vh}
+        .container{max-width:640px;margin:0 auto;background:linear-gradient(180deg,rgba(15,38,56,.96),rgba(8,22,34,.98));padding:28px;border:1px solid var(--sc-border);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+        h2{display:flex;align-items:center;gap:12px;margin:0 0 18px 0;font-size:24px;font-weight:800;border-bottom:2px solid var(--sc-border);padding-bottom:12px}
+        .brand-mark{width:42px;height:42px;border-radius:10px;padding:6px;background:rgba(255,255,255,.04);box-shadow:0 0 0 1px rgba(255,255,255,.06) inset}
+        label{display:block;margin-top:12px;margin-bottom:6px;font-size:12px;font-weight:700;letter-spacing:.45px;text-transform:uppercase;color:var(--sc-muted)}
+        input,textarea,select{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--sc-border);background:var(--sc-input);color:#fff;outline:none;transition:all .2s}
+        input:focus,textarea:focus,select:focus{border-color:var(--sc-primary);box-shadow:0 0 0 2px rgba(36,232,245,.22)}
+        textarea{min-height:96px;font-family:'JetBrains Mono','Courier New',monospace}
+        button{margin-top:14px;padding:9px 14px;border-radius:8px;border:1px solid var(--sc-border);cursor:pointer}
+        .primary{background:var(--sc-primary);color:#fff;box-shadow:0 8px 18px rgba(10,58,102,.34)}
+        .primary:hover{background:var(--sc-primary-hover)}
+        .secondary{background:transparent;color:var(--sc-text)}
+        .secondary:hover{background:rgba(255,255,255,.05)}
+        .row{display:flex;gap:10px}.col{flex:1}
+        .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--sc-border)}
+        </style>
+        </head><body><div class="container">
+        <h2><img class="brand-mark" src="${logoUri}" alt="VSDactyl"/> ${editAccount ? 'Edit SFTP Account' : 'Add SFTP Account'}</h2>
         <label>Display Name</label><input id="name" value="${this.escapeHtml(name)}" />
         <label>Host</label><input id="host" value="${this.escapeHtml(host)}" placeholder="sftp.example.com" />
         <div class="row"><div class="col"><label>Port</label><input id="port" value="${this.escapeHtml(port)}" /></div><div class="col"><label>Username</label><input id="username" value="${this.escapeHtml(username)}" /></div></div>
@@ -81,19 +99,21 @@ export class SftpAccountFormPanel {
             <option value="password" ${sftpAuthMethod === 'password' ? 'selected' : ''}>Password</option>
         </select>
 
-        <div id="sshSection">
+        <div id="sshSection" style="display:${sftpAuthMethod === 'ssh-key' ? 'block' : 'none'}">
             <label>Private Key Path</label>
             <div style="display:flex;gap:8px"><input id="privateKeyPath" value="${this.escapeHtml(privateKeyPath)}" /><button onclick="browseKey()" type="button">Browse</button></div>
             <label style="margin-top:8px">Or Paste Private Key</label>
             <textarea id="privateKeyData" style="min-height:90px">${this.escapeHtml(privateKeyData)}</textarea>
         </div>
 
-        <div id="passwordSection" style="display:none">
+        <div id="passwordSection" style="display:${sftpAuthMethod === 'password' ? 'block' : 'none'}">
             <label>Password</label>
             <input id="password" type="password" />
         </div>
 
-        <div style="display:flex;justify-content:flex-end;gap:8px"><button onclick="cancel()">Cancel</button><button onclick="submit()">${editAccount ? 'Save' : 'Add'}</button></div>
+        <div class="actions"><button class="secondary" onclick="cancel()">Cancel</button><button class="primary" onclick="submit()">${editAccount ? 'Save' : 'Add'}</button></div>
+
+        </div>
 
         <script>
         const vscode = acquireVsCodeApi();

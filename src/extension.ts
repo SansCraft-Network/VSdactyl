@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { AccountManager } from './accounts/accountManager';
 import { PterodactylClient, PteroAccount, SftpOnlyAccount } from './api/pterodactylClient';
-import { ServerTreeProvider, ServerTreeItem } from './views/serverTreeProvider';
+import { ServerTreeProvider, ServerTreeItem, ServerTreeDragAndDropController } from './views/serverTreeProvider';
 import { PterodactylFileSystemProvider } from './filesystem/pterodactylFileSystemProvider';
 import { SftpOnlyFileSystemProvider } from './filesystem/sftpOnlyFileSystemProvider';
 import { RemoteFileDecorationProvider } from './filesystem/remoteFileDecorationProvider';
@@ -58,6 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
     const treeView = vscode.window.createTreeView('pterodactylServers', {
         treeDataProvider: serverTreeProvider,
         showCollapseAll: true,
+        dragAndDropController: new ServerTreeDragAndDropController(),
     });
     context.subscriptions.push(treeView);
 

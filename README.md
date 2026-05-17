@@ -94,9 +94,14 @@ The command IDs stay compatible with the original extension surface, but the use
 - Make sure SFTP is enabled on the target server and accessible from your network.
 - Standalone SFTP entries do not support panel-specific actions like power controls or terminal access.
 
-## Vietnamese Guide
+## Tutorials & Guides
 
-A fuller walkthrough is available in [tutorial.html](tutorial.html).
+Full walkthroughs are available in multiple languages:
+- [English Guide (tutorial.en.html)](tutorial.en.html)
+- [German Guide / Deutsche Anleitung (tutorial.de.html)](tutorial.de.html)
+- [French Guide / Guide en français (tutorial.fr.html)](tutorial.fr.html)
+- [Spanish Guide / Guía en español (tutorial.es.html)](tutorial.es.html)
+- [Vietnamese Guide / Hướng dẫn tiếng Việt (tutorial.html)](tutorial.html)
 
 ## Project Notes
 

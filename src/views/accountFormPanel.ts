@@ -136,7 +136,7 @@ export class AccountFormPanel {
         const publicKeyData = editAccount?.publicKeyData || '';
         const username = editAccount?.username || '';
         const authMethod = editAccount?.authMethod || 'api-key';
-        const logoUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'logo.svg'));
+        const logoUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'resources', 'icon.png'));
 
         return /*html*/ `<!DOCTYPE html>
 <html lang="en">
@@ -255,7 +255,7 @@ export class AccountFormPanel {
 
         input:focus, select:focus, textarea:focus { 
             border-color: var(--ptero-primary);
-            box-shadow: 0 0 0 2px rgba(108, 92, 231, 0.2); 
+            box-shadow: 0 0 0 2px rgba(36, 232, 245, 0.22); 
         }
 
         textarea {
