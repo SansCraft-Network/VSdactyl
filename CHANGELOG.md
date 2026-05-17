@@ -2,6 +2,39 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.1.0-vsdactyl.1] - 2026-05-17
+
+### Brand Identity
+- **Official Fork**: VSDactyl is now the official maintained fork of the Pterodactyl extension
+- Complete rebranding from SansCraft VSdactyl to VSDactyl across all user-visible surfaces
+- Updated all command titles, dialogs, forms, and documentation to use VSDactyl
+
+### 🆕 New Features
+- **Sync Status Indicators**: Visual badges (P/S/~/!) showing file sync state
+- **Drag & Drop Support**: Move files between local and remote filesystems
+- **Explorer Context Menu**: Right-click remote directory to edit connection settings
+- **Recursive Copy**: Copy entire folder hierarchies between systems
+- **SFTP Persistence**: Standalone SFTP connections restore on VS Code reload
+- **Better Reconnection**: Extended support for both panel and standalone accounts
+
+### 🔒 Security
+- **Host Key Verification (TOFU)**: Protects against MITM attacks with SHA256 fingerprints
+- **Automatic Secret Migration**: Legacy private keys migrated from globalState to VS Code secrets storage
+- **Enhanced Logging**: Removed sensitive details (key previews, password hints) from debug output
+
+### 🐛 Bug Fixes
+- **Recursive Delete**: Fixed directory deletion with nested files
+- **Overwrite-Aware Rename**: Pre-checks target existence, handles conflicts correctly
+- **Error Mapping**: Consistent SFTP error translation to VS Code FileSystemError types
+- **Timeout Messages**: Fixed to reflect actual 12s timeout value
+- **Lifecycle Management**: Proper disposal of SFTP connections and filesystem providers
+
+### ⚙️ Improvements
+- Enhanced filesystem contract compliance
+- Better error messages and user feedback
+- Improved form validation in account setup
+- Consistent error handling across operations
+
 ## [2.0.2] - 2026-02-16
 
 - **Fix**: Restored the "Generate Key Pair" button in the manual SSH configuration section of the Add/Edit Account form.
