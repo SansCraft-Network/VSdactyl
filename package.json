@@ -5,7 +5,7 @@
     "version": "2.1.0",
     "icon": "resources/icon.png",
     "license": "MIT",
-    "publisher": "SansCraft",
+    "publisher": "SansCraftNetworkCorp",
     "author": "SansCraft Network Corp",
     "engines": {
         "vscode": "^1.80.0"
