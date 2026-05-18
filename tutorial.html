@@ -245,8 +245,16 @@
             <h2>Live Production Auto-Sync</h2>
             <div class="card">
                 <h3>Deployment Syncing</h3>
-                <p>Instead of manually uploading files, you can bind a local folder directly to a remote server. Right-click any Pterodactyl server and choose <strong>VSDactyl: Map Local Folder (Auto-Sync)</strong>. Select your local workspace folder.</p>
+                <p>Instead of manually uploading files, you can bind a local folder directly to a remote server. Right-click any Pterodactyl server and choose <strong>VSDactyl: Map Local Folder (Auto-Sync)</strong>. Select your local workspace folder, and then specify the target remote path on the server (e.g. <code>/plugins</code> or <code>/config</code>).</p>
                 <p>VSDactyl will drop a <code>.vsdactyl-sync.json</code> configuration file there and immediately start watching the folder. Any changes you make (saves, deletes, new plugins) will instantly be tunneled to the server in the background!</p>
+            </div>
+            <div class="card">
+                <h3>Best Practices & Pitfalls</h3>
+                <ul>
+                    <li><strong>Target specific directories:</strong> Map local build folders directly to subdirectories like <code>/plugins</code> instead of the server root <code>/</code> to avoid unintended overrides.</li>
+                    <li><strong>Edit Configs Live:</strong> You can edit the generated <code>.vsdactyl-sync.json</code> at any time to update the target <code>remotePath</code> or modify the <code>ignorePatterns</code> (by default, <code>node_modules</code> and <code>.git</code> are ignored).</li>
+                    <li><strong>Auto-Sync vs. Connect:</strong> Auto-Sync acts as a <em>one-way pipeline</em> to upload your local compilations to the server automatically. If you want to <em>live-edit</em> server files or browse the remote filesystem dynamically, use the <strong>Connect (SFTP)</strong> button instead!</li>
+                </ul>
             </div>
         </section>
 

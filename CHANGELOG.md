@@ -2,6 +2,12 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.4-vsdactyl] - 2026-05-18
+
+### ✨ Improvements
+- **Interactive Auto-Sync Targeting**: The Auto-Sync initializer now interactively prompts you to specify a remote target directory (like `/plugins`) instead of silently defaulting to the server root `/`.
+- **Enhanced Documentation**: Expanded the in-editor Auto-Sync documentation to include common pitfalls and explicitly outline the difference between Live-Editing (Virtual Workspace) and one-way Compilation Deployment (Auto-Sync).
+
 ## [2.2.3-vsdactyl] - 2026-05-18
 
 ### ✨ Improvements

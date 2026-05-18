@@ -106,13 +106,22 @@ export class SyncManager {
             return;
         }
 
+        const remotePathInput = await vscode.window.showInputBox({
+            prompt: `Enter the remote destination path on ${item.server.name} (e.g. /plugins)`,
+            value: '/',
+            placeHolder: '/'
+        });
+
+        if (remotePathInput === undefined) return; // User cancelled
+        const remotePath = remotePathInput.trim() || '/';
+
         const configPath = vscode.Uri.joinPath(selectedUri, '.vsdactyl-sync.json');
         
         const config: SyncConfig = {
             accountId: item.account.id,
             serverIdentifier: item.server.identifier,
             serverName: item.server.name,
-            remotePath: '/',
+            remotePath: remotePath,
             uploadOnSave: true,
             ignorePatterns: [".git", "node_modules", ".vsdactyl-sync.json"]
         };
