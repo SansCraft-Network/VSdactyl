@@ -118,23 +118,24 @@ export class SyncManager {
             return;
         }
 
+        const isPtero = 'panelUrl' in item.account;
         const browseRemote = { iconPath: new vscode.ThemeIcon('folder-opened'), tooltip: 'Browse Remote...' };
         const remoteInput = vscode.window.createInputBox();
         remoteInput.title = `Select remote destination path on ${item.server.name}`;
         remoteInput.value = '/';
         remoteInput.placeholder = 'Type remote path or click Browse...';
-        remoteInput.buttons = [browseRemote];
+        if (isPtero) remoteInput.buttons = [browseRemote];
 
         let remotePath = await new Promise<string | undefined>((resolve) => {
             remoteInput.onDidAccept(() => resolve(remoteInput.value));
             remoteInput.onDidTriggerButton(async (btn) => {
-                if (btn === browseRemote) {
-                    const ptero = new PterodactylClient(item.account!.panelUrl, item.account!.apiKey || '');
+                if (btn === browseRemote && 'panelUrl' in item.account!) {
+                    const ptero = new PterodactylClient(item.account.panelUrl, item.account.apiKey || '');
                     let currentPath = '/';
                     while (true) {
                         try {
                             const files = await ptero.listFiles(item.server!.identifier, currentPath);
-                            const dirs = files.filter(f => f.attributes.is_file === false).map(f => f.attributes.name);
+                            const dirs = files.filter(f => f.is_file === false).map(f => f.name);
                             
                             const items: vscode.QuickPickItem[] = [];
                             if (currentPath !== '/') items.push({ label: '$(arrow-left) ..', description: 'Go up' });
