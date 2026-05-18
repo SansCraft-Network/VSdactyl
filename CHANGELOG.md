@@ -2,7 +2,7 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
-## [2.2.5-vsdactyl] - 2026-05-18
+## [2.2.6-vsdactyl] - 2026-05-18
 
 ### ✨ Improvements
 - **Advanced Directory Browsing**: The Auto-Sync setup flow now uses hybrid input boxes for both the local and remote path selection. You can either type the exact path manually, or click the **Browse** folder icon to interactively navigate your local disk or securely browse the live remote server's file tree via the Pterodactyl API.
