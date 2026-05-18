@@ -5,6 +5,7 @@ VSDactyl, SansCraft Network's official fork of the original Pterodactyl extensio
 
 ## What It Does
 
+- **Auto-Sync Deployment Engine**: Map a local workspace folder to a remote server. VSDactyl monitors the folder and silently mirrors all saves, creates, and deletes to the remote node in real-time.
 - **Archive-Assisted Bulk Transfers**: Automatically compresses large file drops using zero-I/O native node streams or 7-Zip, uploads the archive over SFTP, and triggers server-side extraction via the Pterodactyl API for lightning-fast mass uploads.
 - **Advanced Transfer Manager Dashboard**: A beautiful, real-time glassmorphic UI to monitor your bulk transfers and throttle upload/download speeds dynamically.
 - **Embedded Web View**: Open your Pterodactyl server's control panel directly inside a VS Code editor tab.

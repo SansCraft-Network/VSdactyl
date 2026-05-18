@@ -2,6 +2,15 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.1-vsdactyl] - 2026-05-18
+
+### 🚀 Major Features
+- **Auto-Sync Deployment Engine**: You can now map any local workspace folder to a remote Pterodactyl node! By generating a `.vsdactyl-sync.json` file, VSDactyl will monitor your local folder via the native `FileSystemWatcher` and instantly tunnel all saves, deletes, and file creations to the remote production daemon in real-time.
+
+### 🐛 Bug Fixes
+- **Transfer Manager UI**: Fixed a missing state hook that prevented the real-time upload progress dashboard from rendering correctly.
+- **Web View Debugger**: Injected cross-origin security debugging into the Web View panel loader to diagnose `X-Frame-Options` drops.
+
 ## [2.2.0-vsdactyl] - 2026-05-17
 
 ### 🚀 Major Features
