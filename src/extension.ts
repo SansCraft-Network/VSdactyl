@@ -78,6 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('pterodactyl.showSftpLog', () => SftpClient.showDebugLog()),
         vscode.commands.registerCommand('pterodactyl.setupSshKey', () => setupSshKey()),
         vscode.commands.registerCommand('pterodactyl.openTerminal', (item?: ServerTreeItem) => openTerminal(item)),
+        vscode.commands.registerCommand('pterodactyl.openPanelWebView', (item?: ServerTreeItem) => openPanelWebView(item)),
         vscode.commands.registerCommand('pterodactyl.editConnectionFromExplorer', (uri?: vscode.Uri) => editConnectionFromExplorer(uri)),
 
         // Power Actions
@@ -741,6 +742,82 @@ async function openTerminal(item?: ServerTreeItem): Promise<void> {
     } catch (err: any) {
         vscode.window.showErrorMessage(`Failed to open terminal: ${err.message}`);
     }
+}
+
+async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
+    if (!item?.server || !item?.account) {
+        vscode.window.showErrorMessage('Please select a server from the tree to open in Web View.');
+        return;
+    }
+
+    if (item.account.type !== 'pterodactyl') {
+        vscode.window.showErrorMessage('Web View is only available for panel-backed servers.');
+        return;
+    }
+
+    const serverUrl = `${item.account.panelUrl.replace(/\/$/, '')}/server/${item.server.identifier}`;
+
+    const panel = vscode.window.createWebviewPanel(
+        'pterodactylPanel',
+        `Pterodactyl: ${item.server.name}`,
+        vscode.ViewColumn.One,
+        {
+            enableScripts: true,
+            retainContextWhenHidden: true
+        }
+    );
+
+    panel.webview.html = `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Pterodactyl Panel</title>
+            <style>
+                body, html {
+                    margin: 0;
+                    padding: 0;
+                    height: 100%;
+                    overflow: hidden;
+                    background-color: var(--vscode-editor-background);
+                }
+                iframe {
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }
+                .fallback-notice {
+                    position: absolute;
+                    top: 10px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(0,0,0,0.7);
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 4px;
+                    font-family: var(--vscode-font-family);
+                    font-size: 13px;
+                    z-index: 10;
+                    opacity: 0.8;
+                    pointer-events: none;
+                    transition: opacity 2s;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="fallback-notice" id="notice">
+                If the panel fails to load, your server may have strict X-Frame-Options configured.
+            </div>
+            <iframe src="${serverUrl}" allow="clipboard-read; clipboard-write;"></iframe>
+            <script>
+                setTimeout(() => {
+                    document.getElementById('notice').style.opacity = '0';
+                }, 5000);
+            </script>
+        </body>
+        </html>
+    `;
 }
 
 async function editConnectionFromExplorer(uri?: vscode.Uri): Promise<void> {

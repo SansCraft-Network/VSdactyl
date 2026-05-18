@@ -54,6 +54,15 @@ export class SftpClient {
 
     // Connection mutex: prevents multiple simultaneous connect() calls
     private connectingPromise: Promise<void> | null = null;
+    private keepAliveTimer: NodeJS.Timeout | null = null;
+
+    private clearKeepAlive() {
+        if (this.keepAliveTimer) {
+            clearInterval(this.keepAliveTimer);
+            this.keepAliveTimer = null;
+        }
+    }
+
     // Track consecutive failures to prevent infinite retry loops
     private consecutiveFailures = 0;
     private static readonly MAX_RETRIES = 1; // Reduced from 3 to 1 to fail fast and let user retry manually
@@ -274,6 +283,14 @@ export class SftpClient {
                     this.sftp = sftp;
                     this.connected = true;
                     this.consecutiveFailures = 0; // reset on success
+
+                    this.clearKeepAlive();
+                    this.keepAliveTimer = setInterval(() => {
+                        if (this.sftp) {
+                            this.sftp.realpath('.', () => { /* silent keep-alive ping */ });
+                        }
+                    }, 45000);
+
                     log(`  ✅ SFTP session established successfully`);
                     resolve();
                 });
@@ -281,6 +298,7 @@ export class SftpClient {
 
             this.client.on('error', (err: any) => {
                 clearTimeout(timeout);
+                this.clearKeepAlive();
                 const errCode = err.level || err.code || 'UNKNOWN';
                 const errMsg = err.message || String(err);
 
@@ -324,12 +342,14 @@ export class SftpClient {
 
             this.client.on('end', () => {
                 log(`  ⚠️ SSH connection ended by server (${host}:${port})`);
+                this.clearKeepAlive();
                 this.connected = false;
                 this.sftp = null;
             });
 
             this.client.on('close', () => {
                 log(`  ⚠️ SSH connection closed for ${host}:${port}`);
+                this.clearKeepAlive();
                 this.connected = false;
                 this.sftp = null;
             });
@@ -364,6 +384,7 @@ export class SftpClient {
         if (this.client) {
             const { host, port } = this.connectionInfo;
             log(`Disconnecting from ${host}:${port}`);
+            this.clearKeepAlive();
             try { this.client.end(); } catch { /* ignore */ }
             this.client = null;
             this.sftp = null;

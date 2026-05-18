@@ -2,7 +2,7 @@
     "name": "sanscraft-vsdactyl",
     "displayName": "VSDactyl",
     "description": "VSDactyl, SansCraft Network's official fork of the Pterodactyl extension from MinhMCPC, for connecting to panel and standalone SFTP servers from VS Code",
-    "version": "2.1.0-vsdactyl.5",
+    "version": "2.1.0",
     "icon": "resources/icon.png",
     "license": "MIT",
     "publisher": "SansCraft",
@@ -110,6 +110,11 @@
                 "command": "pterodactyl.openTerminal",
                 "title": "VSDactyl: Open Server Terminal",
                 "icon": "$(terminal)"
+            },
+            {
+                "command": "pterodactyl.openPanelWebView",
+                "title": "VSDactyl: Open Panel in Web View",
+                "icon": "$(browser)"
             },
             {
                 "command": "pterodactyl.exportData",
@@ -265,6 +270,11 @@
                     "command": "pterodactyl.openTerminal",
                     "when": "view == pterodactylServers && viewItem =~ /server.*/",
                     "group": "context@3"
+                },
+                {
+                    "command": "pterodactyl.openPanelWebView",
+                    "when": "view == pterodactylServers && viewItem =~ /server.*/",
+                    "group": "context@4"
                 }
             ],
             "explorer/context": [

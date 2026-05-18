@@ -161,9 +161,9 @@ export class ServerTreeItem extends vscode.TreeItem {
     }
 }
 
-function createInfoItem(icon: string, label: string, detail: string): ServerTreeItem {
+function createInfoItem(icon: string, label: string, detail: string, color?: vscode.ThemeColor): ServerTreeItem {
     const item = new ServerTreeItem(label, 'serverInfo', vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon(icon);
+    item.iconPath = color ? new vscode.ThemeIcon(icon, color) : new vscode.ThemeIcon(icon);
     item.description = detail;
     return item;
 }
@@ -298,10 +298,28 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
             items.push(createInfoItem('globe', 'Address', `${server.allocation.ip}:${server.allocation.port}`));
         }
 
-        // Limits
-        items.push(createInfoItem('dashboard', 'CPU', `${server.limits.cpu}%`));
-        items.push(createInfoItem('pulse', 'RAM', formatMB(server.limits.memory)));
-        items.push(createInfoItem('database', 'Disk', formatMB(server.limits.disk)));
+        // Resources (Limits / Usage)
+        if (server.usage) {
+            const cpuUsage = server.usage.cpu_absolute;
+            const cpuLimit = server.limits.cpu;
+            const cpuWarning = cpuLimit > 0 && cpuUsage > (cpuLimit * 0.9);
+            items.push(createInfoItem('dashboard', 'CPU', `${cpuUsage.toFixed(1)}% / ${formatLimitCPU(cpuLimit)}`, cpuWarning ? new vscode.ThemeColor('errorForeground') : undefined));
+
+            const ramUsage = server.usage.memory_bytes;
+            const ramLimit = server.limits.memory * 1024 * 1024;
+            const ramWarning = ramLimit > 0 && ramUsage > (ramLimit * 0.9);
+            items.push(createInfoItem('pulse', 'RAM', `${formatBytes(ramUsage)} / ${formatLimitMB(server.limits.memory)}`, ramWarning ? new vscode.ThemeColor('errorForeground') : undefined));
+
+            const diskUsage = server.usage.disk_bytes;
+            const diskLimit = server.limits.disk * 1024 * 1024;
+            const diskWarning = diskLimit > 0 && diskUsage > (diskLimit * 0.9);
+            items.push(createInfoItem('database', 'Disk', `${formatBytes(diskUsage)} / ${formatLimitMB(server.limits.disk)}`, diskWarning ? new vscode.ThemeColor('errorForeground') : undefined));
+        } else {
+            // Static Limits
+            items.push(createInfoItem('dashboard', 'CPU', formatLimitCPU(server.limits.cpu)));
+            items.push(createInfoItem('pulse', 'RAM', formatLimitMB(server.limits.memory)));
+            items.push(createInfoItem('database', 'Disk', formatLimitMB(server.limits.disk)));
+        }
 
         // SFTP info
         if (server.sftp_details.ip) {
