@@ -1,4 +1,19 @@
-## [2.2.12-vsdactyl] - 2026-05-18
+## [2.2.13-vsdactyl] - 2026-05-18
+### ?? Custom Authentication System Support
+- **Manual Authentication Flow**: Users can now disable auto-login to authenticate through custom systems (OAuth, SSO, billing, etc.)
+- **Smart Auth Detection**: Extension automatically detects common SSO/OAuth patterns and shows appropriate guidance
+- **Session Preservation**: Once authenticated through any custom system, the session is preserved via the proxy for all future connections
+- **Graceful Degradation**: If auto-login fails, the extension prompts manual authentication instead of errors
+### ? Features
+- **Custom Auth Detection**: Identifies OAuth, SAML, SSO, and external domain redirects automatically
+- **Enhanced Panel Guidance**: Clear on-screen messages guide users through different authentication scenarios
+- **Better Error Messages**: Detailed console logging helps troubleshoot authentication issues
+- **Flexible Authentication**: Works with any Pterodactyl panel variant, regardless of custom login system
+### ?? Implementation Details
+- Detects custom auth flows using pattern matching on URL paths and OAuth/SAML response codes
+- Shows informative notices when manual authentication is detected
+- Auto-login gracefully skips if form structure doesn't match standard Pterodactyl login
+- All authentication attempts logged with \[VSDactyl Debug]\ prefix for troubleshooting## [2.2.12-vsdactyl] - 2026-05-18
 ### ?? Bug Fixes
 - **CSRF Token Mismatch**: Fixed auto-login CSRF token validation errors by properly detecting and including CSRF tokens in form submissions
 - **Enhanced Form Detection**: Improved detection of username/password fields to handle various Pterodactyl panel implementations and custom workflows
@@ -155,4 +170,5 @@ All notable changes to the "vsdactyl" extension will be documented in this file.
 - Added SFTP file system provider
 - Added server power controls (Start, Stop, Restart, Kill)
 - Added integrated server terminal
+
 

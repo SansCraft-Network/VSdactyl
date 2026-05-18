@@ -899,15 +899,65 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                 let loaded = false;
                 let contextMenu = null;
                 
+                // Detect common custom authentication flows
+                function detectCustomAuthFlow(pageUrl) {
+                    try {
+                        const url = new URL(pageUrl);
+                        const hostname = url.hostname;
+                        const pathname = url.pathname.toLowerCase();
+                        
+                        // Common SSO/OAuth patterns
+                        const ssoPatterns = [
+                            /oauth|openid|saml|sso|login\.microsoftonline|accounts\.google|auth0|okta|adfs/i,
+                            /\/auth\/|\/login\/|\/account\/|\/signin\//i,
+                            /code=|id_token=|assertion=/i // OAuth/SAML response codes
+                        ];
+                        
+                        for (const pattern of ssoPatterns) {
+                            if (pattern.test(pathname) || pattern.test(url.search)) {
+                                return true;
+                            }
+                        }
+                        
+                        // Check for external domain redirects (different from panel domain)
+                        const panelUrl = '${serverUrl}';
+                        const panelDomain = new URL(panelUrl).hostname;
+                        if (hostname !== panelDomain && !hostname.includes(panelDomain.split('.').pop())) {
+                            console.log('[VSDactyl Debug] External auth domain detected:', hostname);
+                            return true;
+                        }
+                    } catch (e) {
+                        console.error('[VSDactyl Debug] Error detecting auth flow:', e.message);
+                    }
+                    return false;
+                }
+                
                 frame.onload = () => {
                     loaded = true;
                     console.log('[VSDactyl Debug] Iframe loaded successfully.');
-                    notice.style.display = 'none';
+                    
+                    // Detect custom authentication systems
+                    const pageUrl = frame.contentWindow.location.href;
+                    const isCustomAuthFlow = detectCustomAuthFlow(pageUrl);
+                    
+                    if (isCustomAuthFlow) {
+                        notice.innerHTML = '🔐 Custom authentication detected. Please complete authentication.';
+                        notice.style.background = 'rgba(36, 232, 245, 0.2)';
+                        notice.style.display = 'block';
+                        console.log('[VSDactyl Debug] Custom authentication flow detected at:', pageUrl);
+                    } else if (!credentials.shouldAutoLogin) {
+                        notice.innerHTML = '🔐 Manual authentication mode. Please log in, your session will be preserved.';
+                        notice.style.background = 'rgba(36, 232, 245, 0.2)';
+                        notice.style.display = 'block';
+                        console.log('[VSDactyl Debug] Auto-login disabled - manual authentication expected');
+                    } else {
+                        notice.style.display = 'none';
+                    }
                     
                     // Inject right-click handler into iframe
                     setupPanelContextMenu();
                     
-                    // Auto-fill credentials if available
+                    // Auto-fill credentials if available and enabled
                     if (credentials.username || credentials.password) {
                         try {
                             setTimeout(() => autofillLogin(credentials), 500);
@@ -1076,6 +1126,14 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                 function autofillLogin(creds) {
                     try {
+                        // Only proceed if auto-login is enabled
+                        if (!creds.shouldAutoLogin) {
+                            console.log('[VSDactyl Debug] Auto-login disabled - expecting manual authentication');
+                            console.log('[VSDactyl Debug] For custom authentication systems (OAuth, SSO, billing), complete login manually');
+                            console.log('[VSDactyl Debug] Your session will be automatically preserved via the proxy');
+                            return;
+                        }
+
                         const doc = frame.contentDocument;
                         if (!doc) {
                             console.warn('[VSDactyl Debug] Cannot access iframe document');
@@ -1084,7 +1142,8 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                         const inputs = doc.querySelectorAll('input');
                         if (!inputs || inputs.length === 0) {
-                            console.warn('[VSDactyl Debug] No input fields found in iframe');
+                            console.warn('[VSDactyl Debug] No input fields found in iframe - custom auth system detected');
+                            console.log('[VSDactyl Debug] This appears to be a custom authentication flow. Please log in manually.');
                             return;
                         }
 
@@ -1128,6 +1187,8 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                         if (!usernameField || !passwordField) {
                             console.warn('[VSDactyl Debug] Could not find username or password field');
+                            console.log('[VSDactyl Debug] This appears to be a custom authentication system.');
+                            console.log('[VSDactyl Debug] Please authenticate manually through the panel.');
                             console.warn('[VSDactyl Debug] Available inputs:', Array.from(inputs).map(i => ({ name: i.name, type: i.type, id: i.id })));
                             return;
                         }

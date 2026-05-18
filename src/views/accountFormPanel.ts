@@ -466,11 +466,11 @@ export class AccountFormPanel {
             <select id="authMethod"><option value="api-key" selected>API Key</option></select>
         </div>
 
-        <h3>🔑 Panel Auto-Login (Optional)</h3>
+        <h3>🔑 Panel Authentication</h3>
         <div class="toggle-container" onclick="togglePanelAutoLogin()">
             <div class="toggle-label">
-                <span class="toggle-title">Enable Panel Auto-Login</span>
-                <span class="toggle-desc">Pre-fill username & password in the panel webview</span>
+                <span class="toggle-title">Enable Auto-Login</span>
+                <span class="toggle-desc">Automatically pre-fill login credentials</span>
             </div>
             <label class="switch">
                 <input type="checkbox" id="panelAutoLogin" ${panelAutoLogin ? 'checked' : ''}>
@@ -482,9 +482,15 @@ export class AccountFormPanel {
             <div class="form-group">
                 <label>Panel Password</label>
                 <input type="password" id="panelPassword" value="${this.escapeHtml(panelPassword)}" placeholder="Your panel login password" />
-                <div class="hint">Your panel login password. Stored securely in VS Code secrets. The extension automatically detects and includes CSRF tokens for compatibility with various Pterodactyl panel versions.</div>
-                <div class="hint" style="color: var(--ptero-success); margin-top: 8px;">✓ CSRF Token Handling: Automatically detects common token patterns (csrf, _token, authenticity). Supports standard and custom Pterodactyl workflows.</div>
-                <div class="hint" style="color: var(--ptero-text-secondary); margin-top: 8px;">If auto-login fails due to custom panel implementation, disable this toggle to manually enter credentials. Check Developer Tools (F12) Console for detailed debug logs.</div>
+                <div class="hint">Your panel login password. Stored securely in VS Code secrets. Automatically detects CSRF tokens and includes them in form submissions.</div>
+                <div class="hint" style="color: var(--ptero-success); margin-top: 8px;">✓ CSRF Token Support: Works with standard Pterodactyl and many custom implementations.</div>
+            </div>
+        </div>
+
+        <div style="background: rgba(36, 232, 245, 0.08); border: 1px solid rgba(36, 232, 245, 0.2); border-radius: 6px; padding: 12px; margin-top: 16px;">
+            <div style="color: var(--ptero-success); font-weight: 600; margin-bottom: 8px;">💡 Custom Authentication Support</div>
+            <div class="hint" style="margin: 0;">
+                <strong>Disable auto-login</strong> for panels with custom authentication (OAuth, SSO, billing system login, etc.). Simply authenticate manually through the panel's custom system, and your session will be automatically preserved for future uses.
             </div>
         </div>
 
