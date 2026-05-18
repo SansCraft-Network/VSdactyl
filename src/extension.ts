@@ -843,6 +843,13 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
             } catch (err: any) {
                 vscode.window.showErrorMessage(`Failed to open file: ${err.message}`);
             }
+        } else if (message.command === 'getProxyHost') {
+            try {
+                const host = await PanelProxy.getProxyHostFor(message.url);
+                panel.webview.postMessage({ command: 'proxyHost', host, forUrl: message.url });
+            } catch (e: any) {
+                panel.webview.postMessage({ command: 'proxyHost', error: e.message, forUrl: message.url });
+            }
         }
     });
 
@@ -892,12 +899,54 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
             </div>
             <iframe src="${serverUrl}" id="panel-frame" allow="clipboard-read; clipboard-write;"></iframe>
             <script>
+                const vscode = acquireVsCodeApi();
                 const notice = document.getElementById('notice');
                 const frame = document.getElementById('panel-frame');
                 const credentials = ${credentialsJson};
                 
                 let loaded = false;
                 let contextMenu = null;
+
+                // Listen for messages from both the iframe and the extension
+                window.addEventListener('message', (event) => {
+                    const msg = event.data;
+
+                    // Forward iframe requests for proxying to the extension
+                    if (msg && msg.command === 'requestProxy' && msg.url) {
+                        try {
+                            console.log('[VSDactyl Debug] Forwarding proxy request to extension for:', msg.url);
+                            vscode.postMessage({ command: 'getProxyHost', url: msg.url });
+                            notice.innerHTML = '🔗 Requesting proxy for external authentication...';
+                            notice.style.background = 'rgba(36, 232, 245, 0.2)';
+                        } catch (e) {
+                            console.error('[VSDactyl Debug] Failed to forward requestProxy to extension:', e.message);
+                        }
+                        return;
+                    }
+
+                    // Handle responses from the extension containing the proxy host
+                    if (msg && msg.command === 'proxyHost' && msg.forUrl) {
+                        if (msg.error) {
+                            console.error('[VSDactyl Debug] Proxy host error:', msg.error);
+                            notice.innerHTML = '<b>Error:</b> Could not proxy external authentication domain.';
+                            notice.style.background = 'rgba(255, 71, 87, 0.9)';
+                            return;
+                        }
+
+                        try {
+                            // Use the URL the extension requested proxy for (safe across origins)
+                            const target = msg.forUrl || frame.src;
+                            const u = new URL(target);
+                            const proxied = msg.host + u.pathname + u.search + u.hash;
+                            console.log('[VSDactyl Debug] Switching iframe to proxied auth URL:', proxied);
+                            frame.src = proxied;
+                            notice.innerHTML = '🔗 Proxying external authentication...';
+                            notice.style.background = 'rgba(36, 232, 245, 0.2)';
+                        } catch (e) {
+                            console.error('[VSDactyl Debug] Failed to set proxied URL:', e.message);
+                        }
+                    }
+                });
                 
                 // Detect common custom authentication flows
                 function detectCustomAuthFlow(pageUrl) {
@@ -935,16 +984,30 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                 frame.onload = () => {
                     loaded = true;
                     console.log('[VSDactyl Debug] Iframe loaded successfully.');
-                    
+
                     // Detect custom authentication systems
-                    const pageUrl = frame.contentWindow.location.href;
+                    let pageUrl = frame.src;
+                    try {
+                        // Try to read full location; may throw on cross-origin navigations
+                        pageUrl = frame.contentWindow.location.href || frame.src;
+                    } catch (e) {
+                        // Cross-origin - fallback to frame.src which is safe to read
+                        pageUrl = frame.src;
+                    }
                     const isCustomAuthFlow = detectCustomAuthFlow(pageUrl);
-                    
+
                     if (isCustomAuthFlow) {
-                        notice.innerHTML = '🔐 Custom authentication detected. Please complete authentication.';
+                        notice.innerHTML = '🔐 Custom authentication detected. Preparing proxy...';
                         notice.style.background = 'rgba(36, 232, 245, 0.2)';
                         notice.style.display = 'block';
                         console.log('[VSDactyl Debug] Custom authentication flow detected at:', pageUrl);
+
+                        // Request the extension to provide a proxy host for this external auth domain
+                        try {
+                            vscode.postMessage({ command: 'getProxyHost', url: pageUrl });
+                        } catch (e) {
+                            console.error('[VSDactyl Debug] Could not request proxy host:', e.message);
+                        }
                     } else if (!credentials.shouldAutoLogin) {
                         notice.innerHTML = '🔐 Manual authentication mode. Please log in, your session will be preserved.';
                         notice.style.background = 'rgba(36, 232, 245, 0.2)';
@@ -953,10 +1016,10 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                     } else {
                         notice.style.display = 'none';
                     }
-                    
+
                     // Inject right-click handler into iframe
                     setupPanelContextMenu();
-                    
+
                     // Auto-fill credentials if available and enabled
                     if (credentials.username || credentials.password) {
                         try {
@@ -1061,6 +1124,50 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                                 hideContextMenu();
                             }
                         });
+
+                        // Intercept clicks and form submissions to detect external auth navigations
+                        doc.addEventListener('click', (e) => {
+                            try {
+                                const anchor = e.target.closest && e.target.closest('a[href]');
+                                if (anchor) {
+                                    const href = anchor.href;
+                                    if (href) {
+                                        try {
+                                            const hrefUrl = new URL(href, location.href);
+                                            if (hrefUrl.origin !== location.origin) {
+                                                // External navigation detected - request proxy from parent
+                                                e.preventDefault();
+                                                window.parent.postMessage({ command: 'requestProxy', url: hrefUrl.href }, '*');
+                                            }
+                                        } catch (err) {
+                                            // ignore parse errors
+                                        }
+                                    }
+                                }
+                            } catch (err) {
+                                // ignore
+                            }
+                        }, true);
+
+                        doc.addEventListener('submit', (e) => {
+                            try {
+                                const form = e.target;
+                                const action = (form && (form.action || frame.contentWindow.location.href)) || '';
+                                if (action) {
+                                    try {
+                                        const actionUrl = new URL(action, location.href);
+                                        if (actionUrl.origin !== location.origin) {
+                                            e.preventDefault();
+                                            window.parent.postMessage({ command: 'requestProxy', url: actionUrl.href }, '*');
+                                        }
+                                    } catch (err) {
+                                        // ignore
+                                    }
+                                }
+                            } catch (err) {
+                                // ignore
+                            }
+                        }, true);
                         
                         // Handle menu item clicks
                         contextMenu.addEventListener('click', (e) => {

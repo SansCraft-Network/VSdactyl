@@ -30,6 +30,21 @@ export class PanelProxy {
         return `http://127.0.0.1:${port}/server/${serverIdentifier}`;
     }
 
+    public static async getProxyHostFor(targetUrl: string): Promise<string> {
+        const parsed = new URL(targetUrl);
+        const hostKey = parsed.origin;
+
+        if (!this.proxies.has(hostKey)) {
+            this.proxies.set(hostKey, {
+                port: await this.startProxy(hostKey),
+                cookieJar: new Map<string, CookieState>(),
+            });
+        }
+
+        const port = this.proxies.get(hostKey)!.port;
+        return `http://127.0.0.1:${port}`;
+    }
+
     private static async startProxy(targetOrigin: string): Promise<number> {
         return new Promise((resolve) => {
             const targetUrl = new URL(targetOrigin);
