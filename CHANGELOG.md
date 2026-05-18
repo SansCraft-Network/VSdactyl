@@ -2,6 +2,12 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.7-vsdactyl] - 2026-05-18
+
+### ✨ Improvements
+- **Global Transfer Interception**: The Transfer Manager dashboard now intercepts all background single-file operations (like Auto-Sync saves and regular code edits) and displays them natively in the UI with a live progress bar.
+- **Cancel Button Integration**: Embedded native `Cancel` buttons directly into the Transfer Manager UI, allowing you to instantly terminate active Node.js byte streams mid-transfer without having to abruptly disconnect from the server.
+
 ## [2.2.6-vsdactyl] - 2026-05-18
 
 ### ✨ Improvements
