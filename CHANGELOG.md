@@ -2,6 +2,14 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.10-vsdactyl] - 2026-05-18
+
+### ✨ Features
+- **Panel Auto-Login**: You can now enable automatic credential pre-filling and submission when opening the Pterodactyl panel. When adding or editing a panel account, toggle "Panel Auto-Login" and enter your panel password to enable this feature.
+- **Secure Credential Storage**: Panel passwords are stored securely using VS Code's Secrets API, never exposed in globalState or logs.
+- **Automatic Form Detection**: The webview automatically detects common login form patterns (username/email and password fields) and intelligently pre-fills them with your saved credentials.
+- **Optional Auto-Submit**: When enabled, the login form is automatically submitted after credentials are filled, providing seamless single-click panel access.
+
 ## [2.2.9-vsdactyl] - 2026-05-18
 
 ### 🐛 Bug Fixes
