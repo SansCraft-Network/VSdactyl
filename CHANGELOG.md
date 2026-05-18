@@ -2,7 +2,7 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
-## [2.2.7-vsdactyl] - 2026-05-18
+## [2.2.8-vsdactyl] - 2026-05-18
 
 ### ✨ Improvements
 - **Global Transfer Interception**: The Transfer Manager dashboard now intercepts all background single-file operations (like Auto-Sync saves and regular code edits) and displays them natively in the UI with a live progress bar.
