@@ -89,16 +89,28 @@ export class SyncManager {
             return;
         }
 
-        const selectedUris = await vscode.window.showOpenDialog({
-            canSelectFiles: false,
-            canSelectFolders: true,
-            canSelectMany: false,
-            openLabel: 'Map Folder',
-            title: `Select local folder to map directly to ${item.server.name}`
+        const browseLocal = { iconPath: new vscode.ThemeIcon('folder-opened'), tooltip: 'Browse...' };
+        const localInput = vscode.window.createInputBox();
+        localInput.title = `Select local folder to map to ${item.server.name}`;
+        localInput.placeholder = 'Type local path or click Browse...';
+        localInput.buttons = [browseLocal];
+
+        const localPath = await new Promise<string | undefined>((resolve) => {
+            localInput.onDidAccept(() => resolve(localInput.value));
+            localInput.onDidTriggerButton(async (btn) => {
+                if (btn === browseLocal) {
+                    const selectedUris = await vscode.window.showOpenDialog({
+                        canSelectFiles: false, canSelectFolders: true, canSelectMany: false, openLabel: 'Map Folder'
+                    });
+                    if (selectedUris && selectedUris.length > 0) localInput.value = selectedUris[0].fsPath;
+                }
+            });
+            localInput.onDidHide(() => resolve(undefined));
+            localInput.show();
         });
 
-        if (!selectedUris || selectedUris.length === 0) return;
-        const selectedUri = selectedUris[0];
+        if (!localPath) return;
+        const selectedUri = vscode.Uri.file(localPath.trim());
 
         const workspaceFolder = vscode.workspace.getWorkspaceFolder(selectedUri);
         if (!workspaceFolder) {
@@ -106,14 +118,58 @@ export class SyncManager {
             return;
         }
 
-        const remotePathInput = await vscode.window.showInputBox({
-            prompt: `Enter the remote destination path on ${item.server.name} (e.g. /plugins)`,
-            value: '/',
-            placeHolder: '/'
+        const browseRemote = { iconPath: new vscode.ThemeIcon('folder-opened'), tooltip: 'Browse Remote...' };
+        const remoteInput = vscode.window.createInputBox();
+        remoteInput.title = `Select remote destination path on ${item.server.name}`;
+        remoteInput.value = '/';
+        remoteInput.placeholder = 'Type remote path or click Browse...';
+        remoteInput.buttons = [browseRemote];
+
+        let remotePath = await new Promise<string | undefined>((resolve) => {
+            remoteInput.onDidAccept(() => resolve(remoteInput.value));
+            remoteInput.onDidTriggerButton(async (btn) => {
+                if (btn === browseRemote) {
+                    const ptero = new PterodactylClient(item.account!.panelUrl, item.account!.apiKey || '');
+                    let currentPath = '/';
+                    while (true) {
+                        try {
+                            const files = await ptero.listFiles(item.server!.identifier, currentPath);
+                            const dirs = files.filter(f => f.attributes.is_file === false).map(f => f.attributes.name);
+                            
+                            const items: vscode.QuickPickItem[] = [];
+                            if (currentPath !== '/') items.push({ label: '$(arrow-left) ..', description: 'Go up' });
+                            items.push({ label: '$(check) SELECT THIS FOLDER', description: currentPath });
+                            
+                            dirs.forEach(d => items.push({ label: `$(folder) ${d}` }));
+
+                            const choice = await vscode.window.showQuickPick(items, { title: `Browsing ${currentPath} on ${item.server!.name}` });
+                            if (!choice) break;
+
+                            if (choice.label.includes('SELECT THIS FOLDER')) {
+                                remoteInput.value = currentPath;
+                                break;
+                            } else if (choice.label.includes('..')) {
+                                const parts = currentPath.split('/').filter(p => p);
+                                parts.pop();
+                                currentPath = '/' + parts.join('/');
+                            } else {
+                                const folderName = choice.label.replace('$(folder) ', '');
+                                currentPath = currentPath === '/' ? `/${folderName}` : `${currentPath}/${folderName}`;
+                            }
+                        } catch (e) {
+                            vscode.window.showErrorMessage('Failed to list remote directory.');
+                            break;
+                        }
+                    }
+                    remoteInput.show();
+                }
+            });
+            remoteInput.onDidHide(() => resolve(undefined));
+            remoteInput.show();
         });
 
-        if (remotePathInput === undefined) return; // User cancelled
-        const remotePath = remotePathInput.trim() || '/';
+        if (remotePath === undefined) return;
+        remotePath = remotePath.trim() || '/';
 
         const configPath = vscode.Uri.joinPath(selectedUri, '.vsdactyl-sync.json');
         

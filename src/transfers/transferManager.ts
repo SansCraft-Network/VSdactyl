@@ -237,12 +237,18 @@ export class TransferManager {
 
                 <div class="controls-section">
                     <div class="control-group">
-                        <label>Upload Limit (MB/s): <span id="ul-val">Unlimited</span></label>
-                        <input type="range" class="range-slider" min="0" max="50" value="0" id="ul-slider">
+                        <label>Upload Limit (MB/s):</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="range" class="range-slider" min="0" max="50" value="0" id="ul-slider" style="flex: 1;">
+                            <input type="number" id="ul-input" value="0" min="0" style="width: 70px; background: rgba(0,0,0,0.2); border: 1px solid var(--ptero-card-border); color: #fff; padding: 4px; border-radius: 4px;" title="0 = Unlimited">
+                        </div>
                     </div>
                     <div class="control-group">
-                        <label>Download Limit (MB/s): <span id="dl-val">Unlimited</span></label>
-                        <input type="range" class="range-slider" min="0" max="50" value="0" id="dl-slider">
+                        <label>Download Limit (MB/s):</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="range" class="range-slider" min="0" max="50" value="0" id="dl-slider" style="flex: 1;">
+                            <input type="number" id="dl-input" value="0" min="0" style="width: 70px; background: rgba(0,0,0,0.2); border: 1px solid var(--ptero-card-border); color: #fff; padding: 4px; border-radius: 4px;" title="0 = Unlimited">
+                        </div>
                     </div>
                 </div>
 
@@ -261,17 +267,23 @@ export class TransferManager {
                 <script>
                     const vscode = acquireVsCodeApi();
                     
-                    document.getElementById('ul-slider').addEventListener('input', (e) => {
-                        const val = e.target.value;
-                        document.getElementById('ul-val').textContent = val == 0 ? 'Unlimited' : val;
-                        vscode.postMessage({ type: 'updateLimit', direction: 'upload', value: val });
-                    });
+                    const syncLimits = (sliderId, inputId, direction) => {
+                        const slider = document.getElementById(sliderId);
+                        const input = document.getElementById(inputId);
+                        
+                        const update = (val) => {
+                            val = Math.max(0, parseInt(val) || 0);
+                            if(val <= 50) slider.value = val;
+                            input.value = val;
+                            vscode.postMessage({ type: 'updateLimit', direction, value: val });
+                        };
 
-                    document.getElementById('dl-slider').addEventListener('input', (e) => {
-                        const val = e.target.value;
-                        document.getElementById('dl-val').textContent = val == 0 ? 'Unlimited' : val;
-                        vscode.postMessage({ type: 'updateLimit', direction: 'download', value: val });
-                    });
+                        slider.addEventListener('input', (e) => update(e.target.value));
+                        input.addEventListener('change', (e) => update(e.target.value));
+                    };
+
+                    syncLimits('ul-slider', 'ul-input', 'upload');
+                    syncLimits('dl-slider', 'dl-input', 'download');
 
                     window.addEventListener('message', event => {
                         const message = event.data;
