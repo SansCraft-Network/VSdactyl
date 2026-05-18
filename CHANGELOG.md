@@ -2,6 +2,15 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.0-vsdactyl] - 2026-05-17
+
+### 🚀 Major Features
+- **Archive-Assisted Bulk Transfers**: Automatically intercepts massive folder drops, compresses them locally (via stream or 7-Zip), and extracts them server-side using the Pterodactyl API.
+- **Advanced Transfer Manager**: A new glassmorphic dashboard to monitor bulk transfer progress and throttle speeds.
+- **Embedded Web View**: Load your server's Pterodactyl panel directly within a VS Code tab.
+- **Hardware Telemetry**: View real-time CPU, RAM, and Disk metrics directly in the Server Tree View.
+- **API Deletions**: Directory deletions now use the Pterodactyl API instead of slow recursive SFTP commands.
+
 ## [2.1.0-vsdactyl.1] - 2026-05-17
 
 ### Brand Identity
@@ -49,7 +58,7 @@ All notable changes to the "vsdactyl" extension will be documented in this file.
 - **New Premium Design**: Completely redesigned the "Add Account" form with a polished theme for a more professional look and better compatibility with VS Code themes.
 - **Embedded SSH Auto-Setup**: You can now automatically generate, save, and upload SSH keys directly during account creation. No manual copy-pasting required.
 - **Improved Validation**: Added real-time error feedback and better field validation in the setup process.
-- **Documentation**: Added a comprehensive [Vietnamese Tutorial](tutorial.html) integrated into the extension.
+- **Documentation**: Added a comprehensive [Vietnamese Tutorial](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.vi.html) integrated into the extension.
 
 ## [1.6.4] - 2026-02-16
 

@@ -20,6 +20,10 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     constructor(protected readonly syncStatusReporter?: SyncStatusReporter) {}
 
+    public getConnection(identifier: string): T | undefined {
+        return this.connections.get(identifier);
+    }
+
     protected getClient(uri: vscode.Uri): SftpClient {
         const identifier = uri.authority;
         const conn = this.connections.get(identifier);

@@ -221,8 +221,26 @@ export class ServerTreeDragAndDropController implements vscode.TreeDragAndDropCo
         dataTransfer.set('text/uri-list', new vscode.DataTransferItem(uriListPayload));
     }
 
-    async handleDrop(_target: ServerTreeItem | undefined, _dataTransfer: vscode.DataTransfer): Promise<void> {
-        // No-op: this controller is only used as a drag source into Explorer.
+    async handleDrop(target: ServerTreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+        if (!target || !target.server || !target.account) {
+            return;
+        }
+
+        const filesItem = dataTransfer.get('text/uri-list');
+        if (!filesItem) {
+            return;
+        }
+
+        const uriList = await filesItem.asString();
+        const uris = uriList.split('\r\n')
+            .filter(s => s.trim() && s.startsWith('file://'))
+            .map(s => vscode.Uri.parse(s));
+
+        if (uris.length === 0) return;
+
+        if (target.account.type === 'pterodactyl') {
+            vscode.commands.executeCommand('pterodactyl.uploadToNode', target, uris);
+        }
     }
 }
 

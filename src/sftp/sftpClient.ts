@@ -568,6 +568,11 @@ export class SftpClient {
         });
     }
 
+    async getWriteStream(filePath: string): Promise<import('stream').Writable> {
+        const sftp = await this.ensureConnected();
+        return sftp.createWriteStream(filePath);
+    }
+
     async writeFile(filePath: string, data: Buffer): Promise<void> {
         const sftp = await this.ensureConnected();
         log(`WRITE ${filePath} (${data.length} bytes)`);

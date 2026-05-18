@@ -2,7 +2,7 @@
     "name": "sanscraft-vsdactyl",
     "displayName": "VSDactyl",
     "description": "VSDactyl, SansCraft Network's official fork of the Pterodactyl extension from MinhMCPC, for connecting to panel and standalone SFTP servers from VS Code",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "icon": "resources/icon.png",
     "license": "MIT",
     "publisher": "SansCraftNetworkCorp",
@@ -117,6 +117,11 @@
                 "icon": "$(browser)"
             },
             {
+                "command": "pterodactyl.showTransferManager",
+                "title": "VSDactyl: Show Transfer Manager",
+                "icon": "$(sync~spin)"
+            },
+            {
                 "command": "pterodactyl.exportData",
                 "title": "VSDactyl: Export Account Data",
                 "icon": "$(cloud-download)"
@@ -178,6 +183,11 @@
                     "command": "pterodactyl.setupSshKey",
                     "when": "view == pterodactylServers",
                     "group": "navigation@3"
+                },
+                {
+                    "command": "pterodactyl.showTransferManager",
+                    "when": "view == pterodactylServers",
+                    "group": "navigation@4"
                 },
                 {
                     "command": "pterodactyl.refreshServers",
@@ -316,6 +326,12 @@
                     "default": "",
                     "description": "VS Code theme color for SFTP filesystem badges (e.g., 'charts.green')",
                     "scope": "window"
+                },
+                "vsdactyl.transfers.largeTransferThresholdMb": {
+                    "type": "number",
+                    "default": 500,
+                    "description": "Size threshold in Megabytes to trigger the 7-Zip compression prompt for bulk uploads.",
+                    "scope": "window"
                 }
             }
         }
@@ -328,6 +344,7 @@
     "devDependencies": {
         "@types/node": "^20.0.0",
         "@types/ssh2": "^1.15.5",
+        "@types/tar": "^6.1.13",
         "@types/vscode": "^1.80.0",
         "@types/ws": "^8.5.10",
         "@vscode/vsce": "^3.7.1",
@@ -335,6 +352,7 @@
     },
     "dependencies": {
         "ssh2": "^1.15.0",
+        "tar": "^7.5.15",
         "ws": "^8.16.0"
     }
 }

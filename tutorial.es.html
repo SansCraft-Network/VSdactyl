@@ -60,7 +60,8 @@
             <li class="nav-item"><a href="#add-account">🔑 Añadir cuenta</a></li>
             <li class="nav-item"><a href="#ssh-auto">✨ SSH Auto-Setup</a></li>
             <li class="nav-item"><a href="#sftp-connect">📂 Gestión de archivos</a></li>
-            <li class="nav-item"><a href="#terminal">💻 Consola / Terminal</a></li>
+            <li class="nav-item"><a href="#advanced-transfers">🚀 Transferencias Masivas</a></li>
+            <li class="nav-item"><a href="#terminal">💻 Consola / Web</a></li>
         </ul>
         <div class="nav-group-title">Soporte</div>
         <ul class="nav-list"><li class="nav-item"><a href="#troubleshooting">🛠️ Solución de problemas</a></li></ul>
@@ -126,11 +127,24 @@
             </div>
         </section>
 
-        <section id="terminal">
-            <h2>Terminal del servidor</h2>
+        <section id="advanced-transfers">
+            <h2>Transferencias Masivas Asistidas por Archivo</h2>
             <div class="card">
-                <p>Usa <strong>Open Terminal</strong> en el menú del servidor para ver logs y ejecutar comandos sin salir de VS Code.</p>
-                <div class="highlight-box">Salida en tiempo real y ejecución de comandos dentro del mismo flujo.</div>
+                <h3>Subidas Ultrarrápidas</h3>
+                <p>Arrastra y suelta una carpeta enorme directamente en un nodo del servidor. VSDactyl intercepta automáticamente la acción, comprime los archivos en un solo archivo, lo sube a través de SFTP y lo extrae instantáneamente en el servidor remoto.</p>
+                <div class="tip-box"><strong>Consejo:</strong> Monitorea las velocidades de subida en vivo, establece límites activos y revisa los tiempos estimados restantes mediante el panel <strong>Transfer Manager Dashboard</strong> a través del ícono de sincronización en la parte superior de la Vista del Servidor.</div>
+            </div>
+        </section>
+
+        <section id="terminal">
+            <h2>Consola y Vista Web</h2>
+            <div class="card">
+                <h3>Terminal en Vivo y Telemetría</h3>
+                <p>Monitorea las métricas en vivo de CPU, RAM y Disco de tu servidor directamente en la vista de árbol. Haz clic derecho en cualquier servidor y selecciona <strong>Open Terminal</strong> para streaming de consola en tiempo real.</p>
+            </div>
+            <div class="card">
+                <h3>Panel Web Integrado</h3>
+                <p>¡Elige <strong>Open Panel in Web View</strong> para cargar sin problemas la interfaz completa de Pterodactyl en una pestaña dedicada de VS Code!</p>
             </div>
         </section>
 

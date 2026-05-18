@@ -9,6 +9,7 @@ import { AccountFormPanel } from './views/accountFormPanel';
 import { SftpAccountFormPanel } from './views/sftpAccountFormPanel';
 import { SftpClient } from './sftp/sftpClient';
 import { TerminalManager } from './terminal/terminalManager';
+import { TransferManager } from './transfers/transferManager';
 
 let accountManager: AccountManager;
 let serverTreeProvider: ServerTreeProvider;
@@ -77,6 +78,23 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('pterodactyl.importData', () => accountManager.importAccounts()),
         vscode.commands.registerCommand('pterodactyl.showSftpLog', () => SftpClient.showDebugLog()),
         vscode.commands.registerCommand('pterodactyl.setupSshKey', () => setupSshKey()),
+        vscode.commands.registerCommand('pterodactyl.uploadToNode', async (item: ServerTreeItem, uris: vscode.Uri[]) => {
+            const conn = fileSystemProvider.getConnection(item.server!.identifier);
+            if (!conn) {
+                vscode.window.showErrorMessage('You must connect to the server first before dropping files.');
+                return;
+            }
+            const pteroClient = new PterodactylClient(item.account!.panelUrl, item.account!.apiKey || '');
+            const transferManager = TransferManager.getInstance(context);
+            await transferManager.initiateArchiveAssistedUpload(
+                uris,
+                '/', // Upload to root directory by default for TreeView drops
+                conn.sftpClient,
+                pteroClient,
+                item.server!.identifier
+            );
+        }),
+        vscode.commands.registerCommand('pterodactyl.showTransferManager', () => TransferManager.getInstance(context).showDashboard()),
         vscode.commands.registerCommand('pterodactyl.openTerminal', (item?: ServerTreeItem) => openTerminal(item)),
         vscode.commands.registerCommand('pterodactyl.openPanelWebView', (item?: ServerTreeItem) => openPanelWebView(item)),
         vscode.commands.registerCommand('pterodactyl.editConnectionFromExplorer', (uri?: vscode.Uri) => editConnectionFromExplorer(uri)),

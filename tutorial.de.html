@@ -60,7 +60,8 @@
             <li class="nav-item"><a href="#add-account">🔑 Konto hinzufügen</a></li>
             <li class="nav-item"><a href="#ssh-auto">✨ SSH Auto-Setup</a></li>
             <li class="nav-item"><a href="#sftp-connect">📂 Dateiverwaltung</a></li>
-            <li class="nav-item"><a href="#terminal">💻 Konsole / Terminal</a></li>
+            <li class="nav-item"><a href="#advanced-transfers">🚀 Massenübertragungen</a></li>
+            <li class="nav-item"><a href="#terminal">💻 Konsole / Webansicht</a></li>
         </ul>
         <div class="nav-group-title">Hilfe</div>
         <ul class="nav-list"><li class="nav-item"><a href="#troubleshooting">🛠️ Fehlerbehebung</a></li></ul>
@@ -126,11 +127,24 @@
             </div>
         </section>
 
-        <section id="terminal">
-            <h2>Server-Terminal</h2>
+        <section id="advanced-transfers">
+            <h2>Archivgestützte Massenübertragungen</h2>
             <div class="card">
-                <p>Über <strong>Open Terminal</strong> im Server-Kontextmenü erhältst du Logs und Befehle direkt in VS Code.</p>
-                <div class="highlight-box">Unterstützt Live-Konsole und schnelle Befehlsausführung in einem Workflow.</div>
+                <h3>Superschnelle Uploads</h3>
+                <p>Ziehen Sie einen riesigen Ordner direkt auf einen Serverknoten. VSDactyl fängt den Vorgang automatisch ab, komprimiert die Dateien in ein einziges Archiv, lädt das Bündel über SFTP hoch und entpackt es sofort auf dem Remote-Server.</p>
+                <div class="tip-box"><strong>Tipp:</strong> Überwachen Sie Live-Upload-Geschwindigkeiten, legen Sie aktive Drosseln fest und zeigen Sie verbleibende ETAs über das <strong>Transfer Manager Dashboard</strong> über das Sync-Symbol an!</div>
+            </div>
+        </section>
+
+        <section id="terminal">
+            <h2>Konsole & Webansicht</h2>
+            <div class="card">
+                <h3>Live Terminal & Telemetrie</h3>
+                <p>Überwachen Sie die Live-CPU-, RAM- und Festplattenmetriken in der Baumansicht. Klicken Sie mit der rechten Maustaste auf einen Server, um das <strong>Terminal öffnen</strong> für Echtzeit-Konsolen-Streaming auszuwählen.</p>
+            </div>
+            <div class="card">
+                <h3>Eingebettetes Web-Panel</h3>
+                <p>Wählen Sie <strong>Panel in Webansicht öffnen</strong>, um die vollständige Pterodactyl-Oberfläche nahtlos in einem VS Code-Tab zu laden!</p>
             </div>
         </section>
 

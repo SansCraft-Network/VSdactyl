@@ -5,6 +5,12 @@ VSDactyl, SansCraft Network's official fork of the original Pterodactyl extensio
 
 ## What It Does
 
+- **Archive-Assisted Bulk Transfers**: Automatically compresses large file drops using zero-I/O native node streams or 7-Zip, uploads the archive over SFTP, and triggers server-side extraction via the Pterodactyl API for lightning-fast mass uploads.
+- **Advanced Transfer Manager Dashboard**: A beautiful, real-time glassmorphic UI to monitor your bulk transfers and throttle upload/download speeds dynamically.
+- **Embedded Web View**: Open your Pterodactyl server's control panel directly inside a VS Code editor tab.
+- **Hardware Metrics Telemetry**: View real-time CPU, RAM, and Disk usage directly in the VS Code Tree View, complete with visual alerts for high-usage scenarios.
+- **API-Accelerated File Operations**: Directory deletions utilize the ultra-fast Pterodactyl API backend instead of slow recursive SFTP unlink commands.
+- **Core SFTP Integrity**: Robust SFTP Keep-Alive heartbeat ensures large file modifications don't drop unexpectedly.
 - Connect to Pterodactyl panel servers and standalone SFTP endpoints.
 - Browse, edit, create, rename, and delete remote files from the VS Code Explorer.
 - Open a live terminal to send commands to a server console.
@@ -97,11 +103,11 @@ The command IDs stay compatible with the original extension surface, but the use
 ## Tutorials & Guides
 
 Full walkthroughs are available in multiple languages:
-- [English Guide (tutorial.en.html)](tutorial.en.html)
-- [German Guide / Deutsche Anleitung (tutorial.de.html)](tutorial.de.html)
-- [French Guide / Guide en français (tutorial.fr.html)](tutorial.fr.html)
-- [Spanish Guide / Guía en español (tutorial.es.html)](tutorial.es.html)
-- [Vietnamese Guide / Hướng dẫn tiếng Việt (tutorial.html)](tutorial.html)
+- [English Guide](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.html)
+- [German Guide / Deutsche Anleitung](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.de.html)
+- [French Guide / Guide en français](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.fr.html)
+- [Spanish Guide / Guía en español](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.es.html)
+- [Vietnamese Guide / Hướng dẫn tiếng Việt](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.vi.html)
 
 ## Project Notes
 
