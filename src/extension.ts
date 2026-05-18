@@ -828,12 +828,43 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
         </head>
         <body>
             <div class="fallback-notice" id="notice">
-                If the panel fails to load, your server may have strict X-Frame-Options configured.
+                Loading panel... Checking for CSP/X-Frame-Options blocks...
             </div>
-            <iframe src="${serverUrl}" allow="clipboard-read; clipboard-write;"></iframe>
+            <iframe src="${serverUrl}" id="panel-frame" allow="clipboard-read; clipboard-write;"></iframe>
             <script>
+                const notice = document.getElementById('notice');
+                const frame = document.getElementById('panel-frame');
+                
+                // Set a timeout to assume CSP block if we don't hear back
+                let loaded = false;
+                
+                frame.onload = () => {
+                    loaded = true;
+                    console.log('[VSDactyl Debug] Iframe loaded event fired.');
+                    try {
+                        // This will intentionally throw a DOMException if cross-origin policy blocks it
+                        const frameUrl = frame.contentWindow.location.href;
+                        console.log('[VSDactyl Debug] Frame URL accessible:', frameUrl);
+                        notice.style.display = 'none';
+                    } catch (e) {
+                        console.error('[VSDactyl Debug] Frame loaded but content restricted (Likely X-Frame-Options: DENY or SAMEORIGIN)', e);
+                        notice.innerHTML = "<b>Panel Blocked:</b> Your Pterodactyl panel has strict X-Frame-Options or CSP headers preventing it from being embedded.<br><br>Check VS Code Developer Tools (Help -> Toggle Developer Tools) for the exact browser error.";
+                        notice.style.background = 'rgba(255, 71, 87, 0.9)';
+                        notice.style.opacity = '1';
+                    }
+                };
+
+                frame.onerror = (e) => {
+                    console.error('[VSDactyl Debug] Iframe error event fired:', e);
+                    notice.innerHTML = "<b>Network Error:</b> Failed to reach the panel URL. Check Developer Tools.";
+                    notice.style.background = 'rgba(255, 71, 87, 0.9)';
+                };
+
                 setTimeout(() => {
-                    document.getElementById('notice').style.opacity = '0';
+                    if (!loaded) {
+                        console.warn('[VSDactyl Debug] Iframe took too long to load. Possible silent CSP block.');
+                        notice.innerHTML = "<b>Timeout:</b> The panel is taking too long to respond or is silently blocked by security headers.<br>Check VS Code Developer Tools.";
+                    }
                 }, 5000);
             </script>
         </body>

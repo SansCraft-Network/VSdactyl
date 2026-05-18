@@ -59,6 +59,16 @@ export class TransferManager {
         });
 
         this.updateDashboardUI();
+        this.broadcastTransfers();
+    }
+
+    private broadcastTransfers() {
+        if (this.webviewPanel) {
+            this.webviewPanel.webview.postMessage({
+                type: 'updateTransfers',
+                data: Array.from(this.activeTransfers.values())
+            });
+        }
     }
 
     private updateDashboardUI() {
@@ -266,7 +276,29 @@ export class TransferManager {
                     window.addEventListener('message', event => {
                         const message = event.data;
                         if (message.type === 'updateTransfers') {
-                            // Render loop for active transfers will go here
+                            const list = document.getElementById('transfers-list');
+                            const transfers = message.data;
+                            if (transfers.length === 0) {
+                                list.innerHTML = '<div class="transfer-card"><div class="transfer-header"><span class="transfer-title">Waiting for operations...</span></div><div class="empty-state">No active bulk transfers</div></div>';
+                                return;
+                            }
+                            
+                            let html = '';
+                            for (const t of transfers) {
+                                const progress = t.totalBytes > 0 ? Math.min((t.bytesCompleted / t.totalBytes) * 100, 100) : 0;
+                                const mbTotal = (t.totalBytes / 1024 / 1024).toFixed(2);
+                                const mbDone = (t.bytesCompleted / 1024 / 1024).toFixed(2);
+                                const elapsedSec = (Date.now() - t.startTime) / 1000;
+                                const speed = t.bytesCompleted > 0 && elapsedSec > 0 ? (t.bytesCompleted / elapsedSec / 1024 / 1024).toFixed(2) : '0.00';
+                                
+                                let statusColor = 'var(--ptero-primary)';
+                                if (t.status === 'completed') statusColor = 'var(--ptero-success)';
+                                if (t.status === 'failed') statusColor = 'var(--ptero-danger)';
+                                if (t.status === 'compressing' || t.status === 'extracting') statusColor = 'var(--ptero-warning)';
+
+                                html += '<div class="transfer-card" style="border-left: 4px solid ' + statusColor + '"><div class="transfer-header"><span class="transfer-title">' + (t.type === 'upload' ? '📤' : '📥') + ' Transfer: ' + t.serverIdentifier + '</span><span class="badge ' + t.type + '" style="background:' + statusColor + '22; color:' + statusColor + '">' + t.status.toUpperCase() + '</span></div><div class="progress-container"><div class="progress-bar" style="width: ' + progress + '%; background: ' + statusColor + '"></div></div><div class="stats-grid"><div class="stats-item"><span>Progress</span><span>' + mbDone + ' / ' + mbTotal + ' MB (' + progress.toFixed(1) + '%)</span></div><div class="stats-item"><span>Speed</span><span>' + speed + ' MB/s</span></div></div></div>';
+                            }
+                            list.innerHTML = html;
                         }
                     });
                 </script>
@@ -361,13 +393,19 @@ export class TransferManager {
 
     private async uploadVia7Zip(files: string[], roots: vscode.Uri[], remoteDest: string, sftp: SftpClient, ptero: PterodactylClient, serverId: string, totalBytes: number, totalFiles: number) {
         const transferId = Math.random().toString(36).substring(2, 9);
+        const active: ActiveTransfer = {
+            id: transferId, type: 'upload', serverIdentifier: serverId,
+            totalFiles, filesCompleted: 0, totalBytes, bytesCompleted: 0,
+            startTime: Date.now(), status: 'compressing'
+        };
+        this.activeTransfers.set(transferId, active);
+        this.broadcastTransfers();
+
         const os = require('os');
         const tempTarball = path.join(os.tmpdir(), `vsdactyl_7z_${transferId}.tar.gz`);
         const tempTar = path.join(os.tmpdir(), `vsdactyl_7z_${transferId}.tar`);
         const remoteTarball = path.posix.join(remoteDest, `vsdactyl_7z_${transferId}.tar.gz`);
         
-        vscode.window.showInformationMessage(`Starting 7-Zip Upload: Compressing ${totalFiles} files locally...`);
-
         try {
             const firstRoot = path.dirname(roots[0].fsPath);
             const rootsStr = roots.map(r => `"${path.relative(firstRoot, r.fsPath)}"`).join(' ');
@@ -381,10 +419,18 @@ export class TransferManager {
             try { fs.unlinkSync(tempTar); } catch {}
 
             const stat = fs.statSync(tempTarball);
-            vscode.window.showInformationMessage(`Compression complete. Uploading payload (${(stat.size / 1024 / 1024).toFixed(2)} MB)...`);
+            active.totalBytes = stat.size;
+            active.status = 'transferring';
+            active.startTime = Date.now();
+            this.broadcastTransfers();
 
             const readStream = fs.createReadStream(tempTarball);
             const writeStream = await sftp.getWriteStream(remoteTarball);
+
+            readStream.on('data', (chunk) => {
+                active.bytesCompleted += chunk.length;
+                this.broadcastTransfers();
+            });
 
             readStream.pipe(writeStream);
 
@@ -396,13 +442,19 @@ export class TransferManager {
 
             try { fs.unlinkSync(tempTarball); } catch {}
 
-            vscode.window.showInformationMessage(`Upload successful. Decompressing on server...`);
+            active.status = 'extracting';
+            this.broadcastTransfers();
 
             await ptero.decompressFile(serverId, remoteDest, path.basename(remoteTarball));
             await ptero.deleteFiles(serverId, remoteDest, [path.basename(remoteTarball)]);
 
+            active.status = 'completed';
+            this.broadcastTransfers();
             vscode.window.showInformationMessage(`7-Zip Bulk Transfer complete!`);
         } catch (err: any) {
+            active.status = 'failed';
+            active.error = err.message;
+            this.broadcastTransfers();
             vscode.window.showErrorMessage(`7-Zip transfer failed: ${err.message}`);
             Logger.error('7-Zip transfer failed', err);
         }
@@ -412,7 +464,13 @@ export class TransferManager {
         const transferId = Math.random().toString(36).substring(2, 9);
         const remoteTarball = path.posix.join(remoteDest, `vsdactyl_stream_${transferId}.tar.gz`);
         
-        vscode.window.showInformationMessage(`Starting Streaming Upload: ${totalFiles} files (${(totalBytes / 1024 / 1024).toFixed(2)} MB)`);
+        const active: ActiveTransfer = {
+            id: transferId, type: 'upload', serverIdentifier: serverId,
+            totalFiles, filesCompleted: 0, totalBytes, bytesCompleted: 0,
+            startTime: Date.now(), status: 'transferring'
+        };
+        this.activeTransfers.set(transferId, active);
+        this.broadcastTransfers();
 
         try {
             const firstRoot = path.dirname(roots[0].fsPath);
@@ -424,6 +482,11 @@ export class TransferManager {
                 cwd: firstRoot,
             }, relativeFiles);
 
+            tarStream.on('data', (chunk) => {
+                active.bytesCompleted += chunk.length;
+                this.broadcastTransfers();
+            });
+
             tarStream.pipe(writeStream);
 
             await new Promise((resolve, reject) => {
@@ -432,13 +495,19 @@ export class TransferManager {
                 tarStream.on('error', reject);
             });
 
-            vscode.window.showInformationMessage(`Stream uploaded successfully. Decompressing on server...`);
+            active.status = 'extracting';
+            this.broadcastTransfers();
 
             await ptero.decompressFile(serverId, remoteDest, path.basename(remoteTarball));
             await ptero.deleteFiles(serverId, remoteDest, [path.basename(remoteTarball)]);
 
+            active.status = 'completed';
+            this.broadcastTransfers();
             vscode.window.showInformationMessage(`Archive-Assisted Bulk Transfer complete!`);
         } catch (err: any) {
+            active.status = 'failed';
+            active.error = err.message;
+            this.broadcastTransfers();
             vscode.window.showErrorMessage(`Streaming transfer failed: ${err.message}`);
             Logger.error('Streaming transfer failed', err);
         }
