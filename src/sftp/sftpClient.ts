@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Client, SFTPWrapper, ConnectConfig } from 'ssh2';
 import { Logger } from '../utils/logger';
+import { TransferManager } from '../transfers/transferManager';
 
 // helper to map local log calls to Logger
 function log(message: string): void {
@@ -536,17 +537,36 @@ export class SftpClient {
     async readFile(filePath: string): Promise<Buffer> {
         const sftp = await this.ensureConnected();
         log(`READ ${filePath}`);
+        
+        let statSize = 0;
+        try { const s = await this.stat(filePath); statSize = s.size; } catch { /* ignore */ }
+        const tm = TransferManager.getInstanceUnsafe();
+        const active = tm?.registerSingleTransfer('download', this.connectionInfo.host, path.basename(filePath), statSize);
+        
         return new Promise((resolve, reject) => {
             const chunks: Buffer[] = [];
             const stream = sftp.createReadStream(filePath);
+            let readBytes = 0;
+
+            if (active) {
+                active.cancel = () => {
+                    stream.destroy();
+                    tm.completeTransfer(active.id, false, 'Cancelled by user');
+                    reject(new Error('Transfer cancelled by user'));
+                };
+            }
 
             stream.on('data', (chunk: Buffer) => {
+                if (active && active.status === 'cancelled') return;
                 chunks.push(chunk);
+                readBytes += chunk.length;
+                if (active) tm.updateTransferProgress(active.id, readBytes);
             });
 
             stream.on('end', () => {
                 const buf = Buffer.concat(chunks);
                 log(`  ✅ Read ${buf.length} bytes`);
+                if (active) tm.completeTransfer(active.id, true);
                 resolve(buf);
             });
 
@@ -556,6 +576,7 @@ export class SftpClient {
                 } else {
                     log(`  ❌ READ failed: ${err.message}`);
                 }
+                if (active) tm.completeTransfer(active.id, false, err.message);
                 reject(new Error(`Failed to read ${filePath}: ${err.message}`));
             });
         });
@@ -569,20 +590,60 @@ export class SftpClient {
     async writeFile(filePath: string, data: Buffer): Promise<void> {
         const sftp = await this.ensureConnected();
         log(`WRITE ${filePath} (${data.length} bytes)`);
+        
+        const tm = TransferManager.getInstanceUnsafe();
+        const active = tm?.registerSingleTransfer('upload', this.connectionInfo.host, path.basename(filePath), data.length);
+        
         return new Promise((resolve, reject) => {
             const stream = sftp.createWriteStream(filePath);
+            let written = 0;
+
+            if (active) {
+                active.cancel = () => {
+                    stream.destroy();
+                    tm.completeTransfer(active.id, false, 'Cancelled by user');
+                    reject(new Error('Transfer cancelled by user'));
+                };
+            }
 
             stream.on('close', () => {
                 log(`  ✅ Written`);
+                if (active) tm.completeTransfer(active.id, true);
                 resolve();
             });
 
             stream.on('error', (err: Error) => {
                 log(`  ❌ WRITE failed: ${err.message}`);
+                if (active) tm.completeTransfer(active.id, false, err.message);
                 reject(new Error(`Failed to write ${filePath}: ${err.message}`));
             });
 
-            stream.end(data);
+            const chunkSize = 64 * 1024;
+            let offset = 0;
+
+            const writeNextChunk = () => {
+                if (active && active.status === 'cancelled') return;
+                
+                if (offset >= data.length) {
+                    stream.end();
+                    return;
+                }
+
+                const end = Math.min(offset + chunkSize, data.length);
+                const chunk = data.subarray(offset, end);
+                offset = end;
+                written += chunk.length;
+                
+                if (active) tm.updateTransferProgress(active.id, written);
+
+                if (!stream.write(chunk)) {
+                    stream.once('drain', writeNextChunk);
+                } else {
+                    process.nextTick(writeNextChunk);
+                }
+            };
+            
+            writeNextChunk();
         });
     }
 

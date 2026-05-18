@@ -19,8 +19,9 @@ export interface ActiveTransfer {
     totalBytes: number;
     bytesCompleted: number;
     startTime: number;
-    status: 'compressing' | 'transferring' | 'extracting' | 'completed' | 'failed';
+    status: 'compressing' | 'transferring' | 'extracting' | 'completed' | 'failed' | 'cancelled';
     error?: string;
+    cancel?: () => void;
 }
 
 export class TransferManager {
@@ -39,6 +40,39 @@ export class TransferManager {
             TransferManager.instance = new TransferManager(context);
         }
         return TransferManager.instance;
+    }
+
+    public static getInstanceUnsafe(): TransferManager {
+        return TransferManager.instance;
+    }
+
+    public registerSingleTransfer(type: 'upload' | 'download', serverIdentifier: string, filePath: string, totalBytes: number): ActiveTransfer {
+        const transferId = Math.random().toString(36).substring(2, 9);
+        const active: ActiveTransfer = {
+            id: transferId, type, serverIdentifier,
+            totalFiles: 1, filesCompleted: 0, totalBytes, bytesCompleted: 0,
+            startTime: Date.now(), status: 'transferring'
+        };
+        this.activeTransfers.set(transferId, active);
+        this.broadcastTransfers();
+        return active;
+    }
+
+    public completeTransfer(id: string, success: boolean = true, error?: string) {
+        const t = this.activeTransfers.get(id);
+        if (t && t.status !== 'cancelled') {
+            t.status = success ? 'completed' : 'failed';
+            t.error = error;
+            t.filesCompleted = t.totalFiles;
+            t.bytesCompleted = t.totalBytes;
+            this.broadcastTransfers();
+            setTimeout(() => {
+                if (this.activeTransfers.has(id)) {
+                    this.activeTransfers.delete(id);
+                    this.broadcastTransfers();
+                }
+            }, 5000);
+        }
     }
 
     public async showDashboard() {
@@ -66,7 +100,10 @@ export class TransferManager {
         if (this.webviewPanel) {
             this.webviewPanel.webview.postMessage({
                 type: 'updateTransfers',
-                data: Array.from(this.activeTransfers.values())
+                data: Array.from(this.activeTransfers.values()).map(t => ({
+                    ...t,
+                    hasCancel: !!t.cancel
+                }))
             });
         }
     }
@@ -300,6 +337,20 @@ export class TransferManager {
                                 const progress = t.totalBytes > 0 ? Math.min((t.bytesCompleted / t.totalBytes) * 100, 100) : 0;
                                 const mbTotal = (t.totalBytes / 1024 / 1024).toFixed(2);
                                 const mbDone = (t.bytesCompleted / 1024 / 1024).toFixed(2);
+                                
+                                html += \`
+                                    <div class="transfer-card">
+                                        <div class="transfer-header">
+                                            <span class="transfer-title">\${t.type === 'upload' ? 'Upload' : 'Download'} - \${t.serverIdentifier}</span>
+                                            <span class="badge \${t.type}">\${t.status}</span>
+                                        </div>
+                                        <div class="stats-grid">
+                                            <div class="stats-item"><span>Files:</span> <span>\${t.filesCompleted} / \${t.totalFiles}</span></div>
+                                            <div class="stats-item"><span>Size:</span> <span>\${mbDone} MB / \${mbTotal} MB</span></div>
+                                        </div>
+                                        <div class="progress-container">
+                                            <div class="progress-bar" style="width: \${progress}%"></div>
+                                        </div>
                                 const elapsedSec = (Date.now() - t.startTime) / 1000;
                                 const speed = t.bytesCompleted > 0 && elapsedSec > 0 ? (t.bytesCompleted / elapsedSec / 1024 / 1024).toFixed(2) : '0.00';
                                 
@@ -308,7 +359,22 @@ export class TransferManager {
                                 if (t.status === 'failed') statusColor = 'var(--ptero-danger)';
                                 if (t.status === 'compressing' || t.status === 'extracting') statusColor = 'var(--ptero-warning)';
 
-                                html += '<div class="transfer-card" style="border-left: 4px solid ' + statusColor + '"><div class="transfer-header"><span class="transfer-title">' + (t.type === 'upload' ? '📤' : '📥') + ' Transfer: ' + t.serverIdentifier + '</span><span class="badge ' + t.type + '" style="background:' + statusColor + '22; color:' + statusColor + '">' + t.status.toUpperCase() + '</span></div><div class="progress-container"><div class="progress-bar" style="width: ' + progress + '%; background: ' + statusColor + '"></div></div><div class="stats-grid"><div class="stats-item"><span>Progress</span><span>' + mbDone + ' / ' + mbTotal + ' MB (' + progress.toFixed(1) + '%)</span></div><div class="stats-item"><span>Speed</span><span>' + speed + ' MB/s</span></div></div></div>';
+                                html += \`
+                                    <div class="transfer-card" style="border-left: 4px solid \${statusColor}">
+                                        <div class="transfer-header">
+                                            <span class="transfer-title">\${t.type === 'upload' ? '📤' : '📥'} Transfer: \${t.serverIdentifier}</span>
+                                            <span class="badge \${t.type}" style="background:\${statusColor}22; color:\${statusColor}">\${t.status.toUpperCase()}</span>
+                                        </div>
+                                        <div class="progress-container">
+                                            <div class="progress-bar" style="width: \${progress}%; background: \${statusColor}"></div>
+                                        </div>
+                                        <div class="stats-grid">
+                                            <div class="stats-item"><span>Progress</span><span>\${mbDone} / \${mbTotal} MB (\${progress.toFixed(1)}%)</span></div>
+                                            <div class="stats-item"><span>Speed</span><span>\${speed} MB/s</span></div>
+                                        </div>
+                                        \${t.status === 'transferring' && t.hasCancel ? \`<button style="background: var(--ptero-danger); color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; float: right;" onclick="vscode.postMessage({ type: 'cancel', id: '\${t.id}' })">Cancel</button>\` : ''}
+                                    </div>
+                                \`;
                             }
                             list.innerHTML = html;
                         }
