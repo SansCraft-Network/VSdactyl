@@ -3,6 +3,7 @@ import { PteroAccount, ExportedAccountData } from './types';
 
 const ACCOUNTS_KEY = 'pterodactyl.accounts';
 const PRIVATE_KEY_SECRET_PREFIX = 'ptero_privatekey_';
+const PANEL_PASSWORD_SECRET_PREFIX = 'ptero_panel_password_';
 
 export class AccountManager {
     private context: vscode.ExtensionContext;
@@ -29,6 +30,11 @@ export class AccountManager {
             if (acc.password) {
                 await this.context.secrets.store('ptero_password_' + acc.id, acc.password);
                 delete acc.password;
+                hasGlobalStateSecrets = true;
+            }
+            if (acc.panelPassword) {
+                await this.context.secrets.store(PANEL_PASSWORD_SECRET_PREFIX + acc.id, acc.panelPassword);
+                delete acc.panelPassword;
                 hasGlobalStateSecrets = true;
             }
             if (acc.privateKeyData) {
@@ -70,6 +76,8 @@ export class AccountManager {
             }
             const password = await this.context.secrets.get('ptero_password_' + acc.id);
             if (password) enriched.password = password;
+            const panelPassword = await this.context.secrets.get(PANEL_PASSWORD_SECRET_PREFIX + acc.id);
+            if (panelPassword) enriched.panelPassword = panelPassword;
             const privateKeyData = await this.context.secrets.get(PRIVATE_KEY_SECRET_PREFIX + acc.id);
             if (privateKeyData) enriched.privateKeyData = privateKeyData;
             
@@ -82,9 +90,15 @@ export class AccountManager {
         account.type = account.type || 'pterodactyl';
         account.branding = 'SansCraft Network Corp';
         
-        if (account.type === 'pterodactyl' && account.apiKey) {
-            await this.context.secrets.store('ptero_apikey_' + account.id, account.apiKey);
+        if (account.type === 'pterodactyl') {
+            if (account.apiKey) {
+                await this.context.secrets.store('ptero_apikey_' + account.id, account.apiKey);
+            }
+            if ((account as any).panelPassword) {
+                await this.context.secrets.store(PANEL_PASSWORD_SECRET_PREFIX + account.id, (account as any).panelPassword);
+            }
         }
+        
         if (account.password) {
             await this.context.secrets.store('ptero_password_' + account.id, account.password);
         }
@@ -95,6 +109,7 @@ export class AccountManager {
         const safeAccount = { ...account } as any;
         delete safeAccount.apiKey;
         delete safeAccount.password;
+        delete safeAccount.panelPassword;
         safeAccount.privateKeyData = '';
 
         const accounts = this.context.globalState.get<any[]>(ACCOUNTS_KEY, []);
@@ -121,6 +136,12 @@ export class AccountManager {
             await this.context.secrets.store('ptero_password_' + id, merged.password);
             delete merged.password;
         }
+        if (merged.panelPassword) {
+            await this.context.secrets.store(PANEL_PASSWORD_SECRET_PREFIX + id, merged.panelPassword);
+            delete merged.panelPassword;
+        } else if (merged.type === 'pterodactyl') {
+            await this.context.secrets.delete(PANEL_PASSWORD_SECRET_PREFIX + id);
+        }
         if (merged.privateKeyData) {
             await this.context.secrets.store(PRIVATE_KEY_SECRET_PREFIX + id, merged.privateKeyData);
             merged.privateKeyData = '';
@@ -140,6 +161,7 @@ export class AccountManager {
         
         await this.context.secrets.delete('ptero_apikey_' + id);
         await this.context.secrets.delete('ptero_password_' + id);
+        await this.context.secrets.delete(PANEL_PASSWORD_SECRET_PREFIX + id);
         await this.context.secrets.delete(PRIVATE_KEY_SECRET_PREFIX + id);
         
         this._onDidChangeAccounts.fire();

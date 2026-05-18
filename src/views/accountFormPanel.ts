@@ -131,6 +131,8 @@ export class AccountFormPanel {
         const apiKey = editAccount?.apiKey || '';
         const sftpAuthMethod = editAccount?.sftpAuthMethod || 'ssh-key'; // Default to ssh-key now
         const password = editAccount?.password || '';
+        const panelPassword = editAccount?.panelPassword || '';
+        const panelAutoLogin = editAccount?.panelAutoLogin || false;
         const privateKeyPath = editAccount?.privateKeyPath || '';
         const privateKeyData = editAccount?.privateKeyData || '';
         const publicKeyData = editAccount?.publicKeyData || '';
@@ -464,6 +466,26 @@ export class AccountFormPanel {
             <select id="authMethod"><option value="api-key" selected>API Key</option></select>
         </div>
 
+        <h3>🔑 Panel Auto-Login (Optional)</h3>
+        <div class="toggle-container" onclick="togglePanelAutoLogin()">
+            <div class="toggle-label">
+                <span class="toggle-title">Enable Panel Auto-Login</span>
+                <span class="toggle-desc">Pre-fill username & password in the panel webview</span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="panelAutoLogin" ${panelAutoLogin ? 'checked' : ''}>
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div id="panelAutoLoginSection" style="display: ${panelAutoLogin ? 'block' : 'none'};">
+            <div class="form-group">
+                <label>Panel Password</label>
+                <input type="password" id="panelPassword" value="${this.escapeHtml(panelPassword)}" placeholder="Your panel login password" />
+                <div class="hint">The password you use to log into your Pterodactyl panel. Stored securely in VS Code secrets.</div>
+            </div>
+        </div>
+
         <h3>🚀 SFTP Authentication</h3>
 
         <div class="auth-tabs">
@@ -589,6 +611,7 @@ export class AccountFormPanel {
         
         // Ensure manual toggle works if user clicks switch directly
         document.getElementById('autoKey')?.addEventListener('change', toggleAutoKey);
+        document.getElementById('panelAutoLogin')?.addEventListener('change', togglePanelAutoLogin);
 
         function browseKey() {
             vscode.postMessage({ command: 'browseKey' });
@@ -598,16 +621,27 @@ export class AccountFormPanel {
             vscode.postMessage({ command: 'generateKey', keyType: 'ed25519' });
         }
 
+        function togglePanelAutoLogin() {
+            const checkbox = document.getElementById('panelAutoLogin');
+            const section = document.getElementById('panelAutoLoginSection');
+            if (section) {
+                section.style.display = checkbox && checkbox.checked ? 'block' : 'none';
+            }
+        }
+
         function submit() {
             const name = document.getElementById('name').value.trim();
             const panelUrl = document.getElementById('panelUrl').value.trim();
             const apiKey = document.getElementById('apiKey').value.trim();
             const password = document.getElementById('password').value;
+            const panelPassword = document.getElementById('panelPassword').value;
             const privateKeyPath = document.getElementById('privateKeyPath').value.trim();
             const privateKeyData = document.getElementById('privateKeyData').value.trim();
             const publicKeyData = document.getElementById('publicKeyData')?.value.trim() || '';
             const username = document.getElementById('username').value.trim();
             const authMethod = document.getElementById('authMethod').value;
+            const panelAutoLoginEl = document.getElementById('panelAutoLogin');
+            const panelAutoLogin = panelAutoLoginEl ? panelAutoLoginEl.checked : false;
             
             // Auto Key flag
             const autoKeyEl = document.getElementById('autoKey');
@@ -645,6 +679,8 @@ export class AccountFormPanel {
                     apiKey,
                     sftpAuthMethod: currentSftpAuth,
                     password: currentSftpAuth === 'password' ? password : '',
+                    panelPassword: panelAutoLogin ? panelPassword : '',
+                    panelAutoLogin,
                     privateKeyPath: (currentSftpAuth === 'ssh-key' && !createSshKey) ? privateKeyPath : '',
                     privateKeyData: (currentSftpAuth === 'ssh-key' && !createSshKey) ? privateKeyData : '',
                     publicKeyData,

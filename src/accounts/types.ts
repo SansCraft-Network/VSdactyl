@@ -18,6 +18,8 @@ export interface PterodactylAccount extends BaseAccount {
     authMethod: 'api-key' | 'cookie';
     apiKey?: string; // Not saved in globalState directly anymore, fetched from secrets
     password?: string; // Panel login password (for SFTP password auth / cookie), from secrets
+    panelPassword?: string; // Dedicated panel login password, from secrets
+    panelAutoLogin?: boolean; // Whether to auto-fill and auto-login on panel webview
 }
 
 export interface SftpOnlyAccount extends BaseAccount {

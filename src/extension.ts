@@ -786,6 +786,15 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
     }
 
     const serverUrl = await PanelProxy.getProxyUrl(item.account.panelUrl, item.server.identifier);
+    
+    // Get stored credentials if auto-login is enabled
+    let username = item.account.username || '';
+    let password = '';
+    let shouldAutoLogin = item.account.panelAutoLogin || false;
+    
+    if (shouldAutoLogin && item.account.panelPassword) {
+        password = item.account.panelPassword;
+    }
 
     const panel = vscode.window.createWebviewPanel(
         'pterodactylPanel',
@@ -796,6 +805,8 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
             retainContextWhenHidden: true
         }
     );
+
+    const credentialsJson = JSON.stringify({ username, password, shouldAutoLogin });
 
     panel.webview.html = `
         <!DOCTYPE html>
@@ -837,20 +848,29 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
         </head>
         <body>
             <div class="fallback-notice" id="notice">
-                Loading panel... Checking for CSP/X-Frame-Options blocks...
+                Loading panel...
             </div>
             <iframe src="${serverUrl}" id="panel-frame" allow="clipboard-read; clipboard-write;"></iframe>
             <script>
                 const notice = document.getElementById('notice');
                 const frame = document.getElementById('panel-frame');
+                const credentials = ${credentialsJson};
                 
-                // Set a timeout to assume CSP block if we don't hear back
                 let loaded = false;
                 
                 frame.onload = () => {
                     loaded = true;
                     console.log('[VSDactyl Debug] Iframe loaded successfully.');
                     notice.style.display = 'none';
+                    
+                    // Auto-fill credentials if available
+                    if (credentials.username || credentials.password) {
+                        try {
+                            setTimeout(() => autofillLogin(credentials), 500);
+                        } catch (e) {
+                            console.warn('[VSDactyl Debug] Could not auto-fill login:', e.message);
+                        }
+                    }
                 };
 
                 frame.onerror = (e) => {
@@ -861,10 +881,76 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                 setTimeout(() => {
                     if (!loaded) {
-                        console.warn('[VSDactyl Debug] Iframe took too long to load. Possible silent CSP block.');
-                        notice.innerHTML = "<b>Timeout:</b> The panel is taking too long to respond or is silently blocked by security headers.<br>Check VS Code Developer Tools.";
+                        console.warn('[VSDactyl Debug] Iframe took too long to load.');
+                        notice.innerHTML = "<b>Timeout:</b> The panel is taking too long to respond.<br>Check VS Code Developer Tools.";
                     }
                 }, 5000);
+
+                function autofillLogin(creds) {
+                    try {
+                        const inputs = frame.contentDocument?.querySelectorAll('input');
+                        if (!inputs || inputs.length === 0) {
+                            console.warn('[VSDactyl Debug] No input fields found in iframe');
+                            return;
+                        }
+
+                        let usernameField = null;
+                        let passwordField = null;
+
+                        // Common patterns for login forms
+                        for (const input of inputs) {
+                            const name = (input.name || '').toLowerCase();
+                            const id = (input.id || '').toLowerCase();
+                            const type = (input.type || '').toLowerCase();
+
+                            if (type === 'password') {
+                                passwordField = input;
+                            } else if (
+                                name.includes('email') || name.includes('user') || 
+                                id.includes('email') || id.includes('user') ||
+                                type === 'email'
+                            ) {
+                                usernameField = input;
+                            }
+                        }
+
+                        if (usernameField && creds.username) {
+                            usernameField.value = creds.username;
+                            usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+                            usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+                            console.log('[VSDactyl Debug] Pre-filled username');
+                        }
+
+                        if (passwordField && creds.password) {
+                            passwordField.value = creds.password;
+                            passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+                            passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+                            console.log('[VSDactyl Debug] Pre-filled password');
+
+                            // Auto-submit if enabled
+                            if (creds.shouldAutoLogin) {
+                                const form = passwordField.closest('form');
+                                if (form) {
+                                    setTimeout(() => {
+                                        form.submit();
+                                        console.log('[VSDactyl Debug] Auto-submitted login form');
+                                    }, 200);
+                                } else {
+                                    // Try to find a submit button
+                                    const submitBtn = frame.contentDocument?.querySelector('button[type="submit"]');
+                                    if (submitBtn) {
+                                        setTimeout(() => {
+                                            submitBtn.click();
+                                            console.log('[VSDactyl Debug] Clicked submit button');
+                                        }, 200);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[VSDactyl Debug] Error during auto-fill:', e.message);
+                    }
+                }
             </script>
         </body>
         </html>
