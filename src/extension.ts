@@ -849,18 +849,8 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                 
                 frame.onload = () => {
                     loaded = true;
-                    console.log('[VSDactyl Debug] Iframe loaded event fired.');
-                    try {
-                        // This will intentionally throw a DOMException if cross-origin policy blocks it
-                        const frameUrl = frame.contentWindow.location.href;
-                        console.log('[VSDactyl Debug] Frame URL accessible:', frameUrl);
-                        notice.style.display = 'none';
-                    } catch (e) {
-                        console.error('[VSDactyl Debug] Frame loaded but content restricted (Likely X-Frame-Options: DENY or SAMEORIGIN)', e);
-                        notice.innerHTML = "<b>Panel Blocked:</b> Your Pterodactyl panel has strict X-Frame-Options or CSP headers preventing it from being embedded.<br><br>Check VS Code Developer Tools (Help -> Toggle Developer Tools) for the exact browser error.";
-                        notice.style.background = 'rgba(255, 71, 87, 0.9)';
-                        notice.style.opacity = '1';
-                    }
+                    console.log('[VSDactyl Debug] Iframe loaded successfully.');
+                    notice.style.display = 'none';
                 };
 
                 frame.onerror = (e) => {
