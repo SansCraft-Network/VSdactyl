@@ -218,13 +218,6 @@ export class SftpClient {
                         'hmac-sha1',
                     ],
                 },
-                debug: (msg: string) => {
-                    // SSH2 debug output - filter common noise
-                    if (msg.includes('DEBUG') || msg.includes('Received packet')) {
-                        return; // Skip verbose packet logs
-                    }
-                    log(`  🔍 SSH2: ${msg}`);
-                },
             };
 
             // Auth method

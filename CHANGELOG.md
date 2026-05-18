@@ -2,6 +2,11 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.2-vsdactyl] - 2026-05-18
+
+### ⚡ Performance
+- **Transfer Speed Unlock**: Disabled the verbose low-level `ssh2` packet debug hook that was blocking the Node.js event loop with thousands of VS Code Output Channel writes per second during bulk transfers. File uploads and downloads will now saturate your network bandwidth.
+
 ## [2.2.1-vsdactyl] - 2026-05-18
 
 ### 🚀 Major Features
