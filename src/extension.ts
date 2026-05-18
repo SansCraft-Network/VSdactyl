@@ -1076,7 +1076,13 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                 function autofillLogin(creds) {
                     try {
-                        const inputs = frame.contentDocument?.querySelectorAll('input');
+                        const doc = frame.contentDocument;
+                        if (!doc) {
+                            console.warn('[VSDactyl Debug] Cannot access iframe document');
+                            return;
+                        }
+
+                        const inputs = doc.querySelectorAll('input');
                         if (!inputs || inputs.length === 0) {
                             console.warn('[VSDactyl Debug] No input fields found in iframe');
                             return;
@@ -1084,59 +1090,104 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                         let usernameField = null;
                         let passwordField = null;
+                        const csrfTokens = [];
 
-                        // Common patterns for login forms
+                        // Scan all inputs to find login fields and CSRF tokens
                         for (const input of inputs) {
                             const name = (input.name || '').toLowerCase();
                             const id = (input.id || '').toLowerCase();
                             const type = (input.type || '').toLowerCase();
+                            const value = input.value || '';
 
+                            // Check for CSRF token patterns
+                            if (
+                                type === 'hidden' && (
+                                    name.includes('csrf') || 
+                                    name.includes('_token') || 
+                                    name.includes('authenticity') ||
+                                    id.includes('csrf')
+                                )
+                            ) {
+                                csrfTokens.push({ name: input.name, value: value });
+                                console.log('[VSDactyl Debug] Found CSRF token:', input.name);
+                            }
+
+                            // Find password field
                             if (type === 'password') {
                                 passwordField = input;
-                            } else if (
-                                name.includes('email') || name.includes('user') || 
-                                id.includes('email') || id.includes('user') ||
+                            } 
+                            // Find username/email field
+                            else if (
+                                name.includes('email') || name.includes('user') || name.includes('username') ||
+                                id.includes('email') || id.includes('user') || id.includes('username') ||
                                 type === 'email'
                             ) {
                                 usernameField = input;
                             }
                         }
 
-                        if (usernameField && creds.username) {
+                        if (!usernameField || !passwordField) {
+                            console.warn('[VSDactyl Debug] Could not find username or password field');
+                            console.warn('[VSDactyl Debug] Available inputs:', Array.from(inputs).map(i => ({ name: i.name, type: i.type, id: i.id })));
+                            return;
+                        }
+
+                        // Pre-fill username
+                        if (creds.username) {
                             usernameField.value = creds.username;
                             usernameField.dispatchEvent(new Event('input', { bubbles: true }));
                             usernameField.dispatchEvent(new Event('change', { bubbles: true }));
-                            console.log('[VSDactyl Debug] Pre-filled username');
+                            usernameField.dispatchEvent(new Event('blur', { bubbles: true }));
+                            console.log('[VSDactyl Debug] Pre-filled username:', creds.username);
                         }
 
-                        if (passwordField && creds.password) {
+                        // Pre-fill password
+                        if (creds.password) {
                             passwordField.value = creds.password;
                             passwordField.dispatchEvent(new Event('input', { bubbles: true }));
                             passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+                            passwordField.dispatchEvent(new Event('blur', { bubbles: true }));
                             console.log('[VSDactyl Debug] Pre-filled password');
 
                             // Auto-submit if enabled
                             if (creds.shouldAutoLogin) {
-                                const form = passwordField.closest('form');
-                                if (form) {
-                                    setTimeout(() => {
+                                setTimeout(() => {
+                                    try {
+                                        const form = passwordField.closest('form');
+                                        if (!form) {
+                                            console.warn('[VSDactyl Debug] Could not find form element');
+                                            return;
+                                        }
+
+                                        console.log('[VSDactyl Debug] Submitting login form with', csrfTokens.length, 'CSRF tokens');
+                                        
+                                        // Use form.submit() which properly includes all form data and respects CSRF tokens
                                         form.submit();
                                         console.log('[VSDactyl Debug] Auto-submitted login form');
-                                    }, 200);
-                                } else {
-                                    // Try to find a submit button
-                                    const submitBtn = frame.contentDocument?.querySelector('button[type="submit"]');
-                                    if (submitBtn) {
-                                        setTimeout(() => {
-                                            submitBtn.click();
-                                            console.log('[VSDactyl Debug] Clicked submit button');
-                                        }, 200);
+                                    } catch (e) {
+                                        console.error('[VSDactyl Debug] Error submitting form:', e.message);
+                                        
+                                        // Fallback: Try clicking submit button for custom workflows
+                                        try {
+                                            const submitBtn = doc.querySelector('button[type="submit"]') || 
+                                                             doc.querySelector('button[name*="submit"]') ||
+                                                             doc.querySelector('[type="submit"]');
+                                            if (submitBtn) {
+                                                submitBtn.click();
+                                                console.log('[VSDactyl Debug] Fallback: clicked submit button');
+                                            }
+                                        } catch (e2) {
+                                            console.error('[VSDactyl Debug] Fallback submit also failed:', e2.message);
+                                        }
                                     }
-                                }
+                                }, 300);
+                            } else {
+                                console.log('[VSDactyl Debug] Auto-login disabled, credentials pre-filled for manual submission');
                             }
                         }
                     } catch (e) {
-                        console.warn('[VSDactyl Debug] Error during auto-fill:', e.message);
+                        console.error('[VSDactyl Debug] Error during auto-fill:', e.message);
+                        console.error('[VSDactyl Debug] Stack:', e.stack);
                     }
                 }
             </script>

@@ -1,4 +1,12 @@
-# Change Log
+## [2.2.12-vsdactyl] - 2026-05-18
+### ?? Bug Fixes
+- **CSRF Token Mismatch**: Fixed auto-login CSRF token validation errors by properly detecting and including CSRF tokens in form submissions
+- **Enhanced Form Detection**: Improved detection of username/password fields to handle various Pterodactyl panel implementations and custom workflows
+- **Better Error Handling**: Added comprehensive debug logging and fallback mechanisms for custom panel login workflows
+### ? Features
+- **Smart CSRF Token Detection**: Automatically detects common CSRF token patterns (csrf, _token, authenticity) and includes them in form submissions
+- **Custom Workflow Support**: Added fallback button-click method for Pterodactyl panels with non-standard form implementations
+- **Improved Debugging**: Enhanced console logging to help diagnose login issues with detailed form introspection data# Change Log
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
@@ -147,3 +155,4 @@ All notable changes to the "vsdactyl" extension will be documented in this file.
 - Added SFTP file system provider
 - Added server power controls (Start, Stop, Restart, Kill)
 - Added integrated server terminal
+

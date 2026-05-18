@@ -482,7 +482,9 @@ export class AccountFormPanel {
             <div class="form-group">
                 <label>Panel Password</label>
                 <input type="password" id="panelPassword" value="${this.escapeHtml(panelPassword)}" placeholder="Your panel login password" />
-                <div class="hint">The password you use to log into your Pterodactyl panel. Stored securely in VS Code secrets.</div>
+                <div class="hint">Your panel login password. Stored securely in VS Code secrets. The extension automatically detects and includes CSRF tokens for compatibility with various Pterodactyl panel versions.</div>
+                <div class="hint" style="color: var(--ptero-success); margin-top: 8px;">✓ CSRF Token Handling: Automatically detects common token patterns (csrf, _token, authenticity). Supports standard and custom Pterodactyl workflows.</div>
+                <div class="hint" style="color: var(--ptero-text-secondary); margin-top: 8px;">If auto-login fails due to custom panel implementation, disable this toggle to manually enter credentials. Check Developer Tools (F12) Console for detailed debug logs.</div>
             </div>
         </div>
 
