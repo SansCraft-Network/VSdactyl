@@ -774,6 +774,34 @@ async function openTerminal(item?: ServerTreeItem): Promise<void> {
     }
 }
 
+async function handleOpenPanelFile(filePath: string, fileName: string, item: ServerTreeItem): Promise<void> {
+    if (!item.account || item.account.type !== 'pterodactyl') {
+        throw new Error('Invalid account type');
+    }
+
+    // Create a URI using the ptero scheme so it integrates with our file explorer
+    const fileUri = vscode.Uri.parse(`ptero://${item.account.id}/${item.server?.identifier}/file${filePath}`);
+    
+    try {
+        const doc = await vscode.workspace.openTextDocument(fileUri);
+        await vscode.window.showTextDocument(doc, { preview: false });
+    } catch (err: any) {
+        // If direct opening fails, try to use the transfer manager to download the file temporarily
+        console.warn('[VSDactyl] Could not open file via ptero scheme, attempting alternative method:', err.message);
+        
+        // Show an info message
+        vscode.window.showInformationMessage(
+            `File opening via VS Code explorer requires Auto-Sync setup. Would you like to set up Auto-Sync for ${item.server?.name}?`,
+            'Setup Auto-Sync'
+        ).then(choice => {
+            if (choice === 'Setup Auto-Sync') {
+                // Trigger the Auto-Sync setup command
+                vscode.commands.executeCommand('vsdactyl.initSync', item);
+            }
+        });
+    }
+}
+
 async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
     if (!item?.server || !item?.account) {
         vscode.window.showErrorMessage('Please select a server from the tree to open in Web View.');
@@ -805,6 +833,18 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
             retainContextWhenHidden: true
         }
     );
+
+    // Handle messages from the webview
+    panel.webview.onDidReceiveMessage(async (message) => {
+        if (message.command === 'openPanelFile') {
+            const { filePath, fileName } = message.data;
+            try {
+                await handleOpenPanelFile(filePath, fileName, item);
+            } catch (err: any) {
+                vscode.window.showErrorMessage(`Failed to open file: ${err.message}`);
+            }
+        }
+    });
 
     const credentialsJson = JSON.stringify({ username, password, shouldAutoLogin });
 
@@ -857,11 +897,15 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                 const credentials = ${credentialsJson};
                 
                 let loaded = false;
+                let contextMenu = null;
                 
                 frame.onload = () => {
                     loaded = true;
                     console.log('[VSDactyl Debug] Iframe loaded successfully.');
                     notice.style.display = 'none';
+                    
+                    // Inject right-click handler into iframe
+                    setupPanelContextMenu();
                     
                     // Auto-fill credentials if available
                     if (credentials.username || credentials.password) {
@@ -885,6 +929,150 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                         notice.innerHTML = "<b>Timeout:</b> The panel is taking too long to respond.<br>Check VS Code Developer Tools.";
                     }
                 }, 5000);
+
+                function setupPanelContextMenu() {
+                    try {
+                        const doc = frame.contentDocument;
+                        if (!doc) return;
+                        
+                        // Create context menu style
+                        const style = doc.createElement('style');
+                        style.textContent = \`
+                            .vsdactyl-context-menu {
+                                position: fixed;
+                                background: var(--vscode-menu-background, #252526);
+                                border: 1px solid var(--vscode-menu-border, #3e3e42);
+                                border-radius: 4px;
+                                padding: 4px 0;
+                                min-width: 200px;
+                                z-index: 10000;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                display: none;
+                            }
+                            .vsdactyl-context-menu.visible {
+                                display: block;
+                            }
+                            .vsdactyl-menu-item {
+                                padding: 8px 12px;
+                                cursor: pointer;
+                                color: var(--vscode-menu-foreground, #cccccc);
+                                white-space: nowrap;
+                                user-select: none;
+                            }
+                            .vsdactyl-menu-item:hover {
+                                background: var(--vscode-menu-selectionBackground, #094771);
+                            }
+                            .vsdactyl-menu-icon {
+                                margin-right: 8px;
+                                display: inline-block;
+                                width: 16px;
+                                text-align: center;
+                            }
+                        \`;
+                        doc.head.appendChild(style);
+                        
+                        // Create context menu element
+                        contextMenu = doc.createElement('div');
+                        contextMenu.className = 'vsdactyl-context-menu';
+                        contextMenu.innerHTML = \`
+                            <div class="vsdactyl-menu-item" data-action="open-in-vscode">
+                                <span class="vsdactyl-menu-icon">📝</span>Open in VS Code
+                            </div>
+                            <div class="vsdactyl-menu-item" data-action="copy-path">
+                                <span class="vsdactyl-menu-icon">📋</span>Copy Path
+                            </div>
+                        \`;
+                        doc.body.appendChild(contextMenu);
+                        
+                        let selectedFile = null;
+                        
+                        // Handle right-click on the whole document
+                        doc.addEventListener('contextmenu', (e) => {
+                            const target = e.target;
+                            
+                            // Look for file elements - check various Pterodactyl class patterns
+                            const fileRow = target.closest('[data-name], .file-entry, .file-row, [role="row"]');
+                            const fileName = fileRow?.getAttribute('data-name') || 
+                                           fileRow?.innerText?.split('\\n')[0]?.trim() ||
+                                           target.textContent?.trim();
+                            
+                            if (fileRow && fileName && fileName.length > 0) {
+                                e.preventDefault();
+                                selectedFile = {
+                                    name: fileName,
+                                    element: fileRow,
+                                    path: extractFilePath(fileRow, fileName)
+                                };
+                                
+                                contextMenu.style.left = e.clientX + 'px';
+                                contextMenu.style.top = e.clientY + 'px';
+                                contextMenu.classList.add('visible');
+                            } else {
+                                hideContextMenu();
+                            }
+                        });
+                        
+                        // Handle menu item clicks
+                        contextMenu.addEventListener('click', (e) => {
+                            const action = e.target.closest('[data-action]')?.getAttribute('data-action');
+                            if (action && selectedFile) {
+                                if (action === 'open-in-vscode') {
+                                    window.parent.postMessage({
+                                        command: 'openPanelFile',
+                                        data: { filePath: selectedFile.path, fileName: selectedFile.name }
+                                    }, '*');
+                                } else if (action === 'copy-path') {
+                                    navigator.clipboard.writeText(selectedFile.path).catch(err => {
+                                        console.warn('[VSDactyl] Could not copy to clipboard:', err);
+                                    });
+                                }
+                                hideContextMenu();
+                            }
+                        });
+                        
+                        // Hide menu when clicking elsewhere
+                        doc.addEventListener('click', () => hideContextMenu());
+                        doc.addEventListener('keydown', (e) => {
+                            if (e.key === 'Escape') hideContextMenu();
+                        });
+                        
+                        function hideContextMenu() {
+                            contextMenu?.classList.remove('visible');
+                            selectedFile = null;
+                        }
+                        
+                        function extractFilePath(element, fileName) {
+                            // Try to extract the full path from breadcrumbs or data attributes
+                            let path = '';
+                            
+                            // Check for data-path attribute
+                            if (element.getAttribute('data-path')) {
+                                path = element.getAttribute('data-path');
+                            } else {
+                                // Try to find breadcrumb path
+                                const breadcrumbs = doc.querySelectorAll('[class*="breadcrumb"] a, [class*="path"] span');
+                                if (breadcrumbs.length > 0) {
+                                    path = Array.from(breadcrumbs)
+                                        .map(b => b.textContent.trim())
+                                        .filter(t => t && t !== '/')
+                                        .join('/');
+                                    path = '/' + path;
+                                }
+                            }
+                            
+                            // If no path found, just use filename with root
+                            if (!path || path === '/') {
+                                path = '/' + fileName;
+                            } else if (!path.endsWith(fileName)) {
+                                path = path.endsWith('/') ? path + fileName : path + '/' + fileName;
+                            }
+                            
+                            return path;
+                        }
+                    } catch (e) {
+                        console.warn('[VSDactyl Debug] Could not setup context menu:', e.message);
+                    }
+                }
 
                 function autofillLogin(creds) {
                     try {

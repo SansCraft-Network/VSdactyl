@@ -2,6 +2,13 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.11-vsdactyl] - 2026-05-18
+
+### ✨ Features
+- **Right-Click Context Menu in Panel**: Right-click on files in the Pterodactyl panel webview to quickly open them in VS Code
+- **Quick File Actions**: Choose "Open in VS Code" to edit remote files or "Copy Path" to get the full file path
+- **Smart Path Detection**: Automatically detects file paths from breadcrumbs and panel metadata for accurate file handling
+
 ## [2.2.10-vsdactyl] - 2026-05-18
 
 ### ✨ Features
