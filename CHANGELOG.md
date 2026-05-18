@@ -1,4 +1,8 @@
-## [2.2.13-vsdactyl] - 2026-05-18
+## [2.2.14-vsdactyl] - 2026-05-18
+### ?? Release
+- Proxy external authentication domains for billing/OAuth flows to prevent blank pages.
+- Intercept external clicks and form submissions to route through local proxy when needed.
+- Improve detection and guidance for custom authentication systems.## [2.2.13-vsdactyl] - 2026-05-18
 ### ?? Custom Authentication System Support
 - **Manual Authentication Flow**: Users can now disable auto-login to authenticate through custom systems (OAuth, SSO, billing, etc.)
 - **Smart Auth Detection**: Extension automatically detects common SSO/OAuth patterns and shows appropriate guidance
@@ -170,5 +174,6 @@ All notable changes to the "vsdactyl" extension will be documented in this file.
 - Added SFTP file system provider
 - Added server power controls (Start, Stop, Restart, Kill)
 - Added integrated server terminal
+
 
 
