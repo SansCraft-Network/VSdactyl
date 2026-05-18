@@ -10,6 +10,7 @@ import { SftpAccountFormPanel } from './views/sftpAccountFormPanel';
 import { SftpClient } from './sftp/sftpClient';
 import { TerminalManager } from './terminal/terminalManager';
 import { TransferManager } from './transfers/transferManager';
+import { SyncManager } from './sync/syncManager';
 
 let accountManager: AccountManager;
 let serverTreeProvider: ServerTreeProvider;
@@ -34,6 +35,10 @@ export function activate(context: vscode.ExtensionContext) {
     fileSystemProvider = new PterodactylFileSystemProvider(remoteDecorationProvider);
     sftpFileSystemProvider = new SftpOnlyFileSystemProvider(remoteDecorationProvider);
     terminalManager = new TerminalManager();
+
+    // Initialize background singletons
+    TransferManager.getInstance(context);
+    SyncManager.getInstance(context, accountManager);
 
     // Register FileSystemProvider for ptero:// scheme
     context.subscriptions.push(
@@ -67,6 +72,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Register commands
     context.subscriptions.push(
         vscode.commands.registerCommand('pterodactyl.addAccount', () => openAddAccountForm()),
+        vscode.commands.registerCommand('pterodactyl.initSyncConfig', (item?: ServerTreeItem) => {
+            if (item) SyncManager.getInstance(context).initSyncConfigCommand(item);
+        }),
         vscode.commands.registerCommand('pterodactyl.addSftpAccount', () => openAddSftpAccountForm()),
         vscode.commands.registerCommand('pterodactyl.editAccount', (item?: ServerTreeItem) => openEditAccountForm(item)),
         vscode.commands.registerCommand('pterodactyl.removeAccount', (item?: ServerTreeItem) => removeAccount(item)),

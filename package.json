@@ -165,6 +165,11 @@
                 "command": "pterodactyl.killServer",
                 "title": "Kill Server",
                 "icon": "$(flame)"
+            },
+            {
+                "command": "pterodactyl.initSyncConfig",
+                "title": "VSDactyl: Map Local Folder (Auto-Sync)",
+                "icon": "$(sync)"
             }
         ],
         "menus": {
@@ -285,6 +290,11 @@
                     "command": "pterodactyl.openPanelWebView",
                     "when": "view == pterodactylServers && viewItem =~ /server.*/",
                     "group": "context@4"
+                },
+                {
+                    "command": "pterodactyl.initSyncConfig",
+                    "when": "view == pterodactylServers && viewItem =~ /server.*/",
+                    "group": "context@5"
                 }
             ],
             "explorer/context": [
