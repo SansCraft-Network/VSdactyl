@@ -89,13 +89,24 @@ export class SyncManager {
             return;
         }
 
-        const selectedFolder = await vscode.window.showWorkspaceFolderPick({
-            placeHolder: `Select the local folder to map directly to ${item.server.name}`
+        const selectedUris = await vscode.window.showOpenDialog({
+            canSelectFiles: false,
+            canSelectFolders: true,
+            canSelectMany: false,
+            openLabel: 'Map Folder',
+            title: `Select local folder to map directly to ${item.server.name}`
         });
 
-        if (!selectedFolder) return;
+        if (!selectedUris || selectedUris.length === 0) return;
+        const selectedUri = selectedUris[0];
 
-        const configPath = vscode.Uri.joinPath(selectedFolder.uri, '.vsdactyl-sync.json');
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(selectedUri);
+        if (!workspaceFolder) {
+            vscode.window.showWarningMessage('The selected folder is outside your active VS Code workspace. Auto-Sync cannot detect file changes automatically outside the workspace. Please open it in your workspace first.');
+            return;
+        }
+
+        const configPath = vscode.Uri.joinPath(selectedUri, '.vsdactyl-sync.json');
         
         const config: SyncConfig = {
             accountId: item.account.id,
@@ -107,7 +118,8 @@ export class SyncManager {
         };
 
         await vscode.workspace.fs.writeFile(configPath, Buffer.from(JSON.stringify(config, null, 4), 'utf8'));
-        vscode.window.showInformationMessage(`✅ VSDactyl Auto-Sync initialized! ${selectedFolder.name} is now mapped to ${item.server.name}.`);
+        const folderName = path.basename(selectedUri.fsPath);
+        vscode.window.showInformationMessage(`✅ VSDactyl Auto-Sync initialized! ${folderName} is now mapped to ${item.server.name}.`);
         
         await this.scanForConfigs();
     }

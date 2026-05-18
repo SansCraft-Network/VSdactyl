@@ -2,6 +2,12 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.3-vsdactyl] - 2026-05-18
+
+### ✨ Improvements
+- **Nested Auto-Sync Picker**: Replaced the restrictive `Workspace Folder` root picker with a robust `Open Dialog` picker, allowing users to map deeply nested subdirectories directly to Auto-Sync instead of being forced to map the entire workspace root.
+- **Documentation CDNs**: Migrated all public tutorial HTML documentation links to use `staticdelivr.com` instead of raw `jsdelivr` endpoints.
+
 ## [2.2.2-vsdactyl] - 2026-05-18
 
 ### ⚡ Performance
@@ -72,7 +78,7 @@ All notable changes to the "vsdactyl" extension will be documented in this file.
 - **New Premium Design**: Completely redesigned the "Add Account" form with a polished theme for a more professional look and better compatibility with VS Code themes.
 - **Embedded SSH Auto-Setup**: You can now automatically generate, save, and upload SSH keys directly during account creation. No manual copy-pasting required.
 - **Improved Validation**: Added real-time error feedback and better field validation in the setup process.
-- **Documentation**: Added a comprehensive [Vietnamese Tutorial](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.vi.html) integrated into the extension.
+- **Documentation**: Added a comprehensive [Vietnamese Tutorial](https://cdn.staticdelivr.com/gh/SansCraft-Network/VSdactyl/main/tutorial.vi.html) integrated into the extension.
 
 ## [1.6.4] - 2026-02-16
 

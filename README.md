@@ -104,11 +104,11 @@ The command IDs stay compatible with the original extension surface, but the use
 ## Tutorials & Guides
 
 Full walkthroughs are available in multiple languages:
-- [English Guide](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.html)
-- [German Guide / Deutsche Anleitung](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.de.html)
-- [French Guide / Guide en français](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.fr.html)
-- [Spanish Guide / Guía en español](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.es.html)
-- [Vietnamese Guide / Hướng dẫn tiếng Việt](https://cdn.jsdelivr.net/gh/SansCraft-Network/VSdactyl@main/tutorial.vi.html)
+- [English Guide](https://cdn.staticdelivr.com/gh/SansCraft-Network/VSdactyl/main/tutorial.html)
+- [German Guide / Deutsche Anleitung](https://cdn.staticdelivr.com/gh/SansCraft-Network/VSdactyl/main/tutorial.de.html)
+- [French Guide / Guide en français](https://cdn.staticdelivr.com/gh/SansCraft-Network/VSdactyl/main/tutorial.fr.html)
+- [Spanish Guide / Guía en español](https://cdn.staticdelivr.com/gh/SansCraft-Network/VSdactyl/main/tutorial.es.html)
+- [Vietnamese Guide / Hướng dẫn tiếng Việt](https://cdn.staticdelivr.com/gh/SansCraft-Network/VSdactyl/main/tutorial.vi.html)
 
 ## Project Notes
 
