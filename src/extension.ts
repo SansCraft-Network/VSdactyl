@@ -21,6 +21,7 @@ let terminalManager: TerminalManager;
 let extensionContext: vscode.ExtensionContext;
 
 import { Logger } from './utils/logger';
+import { PanelProxy } from './utils/panelProxy';
 
 export function activate(context: vscode.ExtensionContext) {
     Logger.initialize();
@@ -784,7 +785,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
         return;
     }
 
-    const serverUrl = `${item.account.panelUrl.replace(/\/$/, '')}/server/${item.server.identifier}`;
+    const serverUrl = await PanelProxy.getProxyUrl(item.account.panelUrl, item.server.identifier);
 
     const panel = vscode.window.createWebviewPanel(
         'pterodactylPanel',

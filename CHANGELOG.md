@@ -2,6 +2,12 @@
 
 All notable changes to the "vsdactyl" extension will be documented in this file.
 
+## [2.2.9-vsdactyl] - 2026-05-18
+
+### 🐛 Bug Fixes
+- **Panel Proxy Session Handling**: The local panel proxy now preserves login sessions across redirects and forwards panel auth cookies so embedded web views can load more Pterodactyl panels successfully.
+- **Embedded Panel Routing**: The proxy now rewrites redirect locations back through the local loopback endpoint while stripping `X-Frame-Options` and `Content-Security-Policy` headers.
+
 ## [2.2.8-vsdactyl] - 2026-05-18
 
 ### ✨ Improvements
