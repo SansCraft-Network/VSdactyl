@@ -84,7 +84,10 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage('You must connect to the server first before dropping files.');
                 return;
             }
-            const pteroClient = new PterodactylClient(item.account!.panelUrl, item.account!.apiKey || '');
+            if (item.account?.type !== 'pterodactyl') {
+                return; // Type guard to ensure we have panelUrl and apiKey
+            }
+            const pteroClient = new PterodactylClient(item.account.panelUrl, item.account.apiKey || '');
             const transferManager = TransferManager.getInstance(context);
             await transferManager.initiateArchiveAssistedUpload(
                 uris,
