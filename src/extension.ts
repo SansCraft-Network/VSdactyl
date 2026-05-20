@@ -13,6 +13,7 @@ import { TransferManager } from './transfers/transferManager';
 import { TransferOrchestrator } from './transfers/transferOrchestrator';
 import { BulkTransferEngine } from './transfers/bulkTransferEngine';
 import { SyncManager } from './sync/syncManager';
+import { registerLanguageModelTools } from './tools/languageModelTools';
 
 let accountManager!: AccountManager;
 let serverTreeProvider!: ServerTreeProvider;
@@ -51,6 +52,9 @@ export function activate(context: vscode.ExtensionContext) {
     fileSystemProvider.setOrchestrator(transferOrchestrator);
     sftpFileSystemProvider.setOrchestrator(transferOrchestrator);
     syncManager = SyncManager.getInstance(context, accountManager);
+
+    // Register Language Model Tools for AI Agents / Copilot
+    registerLanguageModelTools(context, accountManager, serverTreeProvider);
 
     // Subscribe to transfer completion events to refresh tree view
     context.subscriptions.push(transferManager.onDidUpdateSession((session) => {

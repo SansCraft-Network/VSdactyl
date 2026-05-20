@@ -1,3 +1,15 @@
+## [2.4.0-vsdactyl] - 2026-05-20
+
+### 🚀 Agent & Copilot Tool Integration
+- **Exposed Language Model Tools**: Exposes powerful capabilities of the VSDactyl extension directly to GitHub Copilot Chat and other AI agent systems inside VS Code.
+- **Available Tools**:
+  - `vsdactyl_list_servers`: Lists all configured servers.
+  - `vsdactyl_list_files`: Lists directory contents on a remote server.
+  - `vsdactyl_read_file`: Reads a remote file.
+  - `vsdactyl_write_file`: Writes content to a remote file.
+  - `vsdactyl_send_command`: Sends a console command or power state action to a Pterodactyl server.
+  - `vsdactyl_archive_operation`: Performs high-speed zip compression/decompression directly on remote panel hosts.
+
 ## [2.3.2-vsdactyl] - 2026-05-20
 
 ### 🚀 Major Improvements
