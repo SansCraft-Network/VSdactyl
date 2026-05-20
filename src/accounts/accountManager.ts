@@ -119,11 +119,13 @@ export class AccountManager {
     }
 
     async editAccount(id: string, updated: Partial<PteroAccount>): Promise<void> {
-        if (!updated.type) updated.type = 'pterodactyl';
-        
         const accounts = this.context.globalState.get<any[]>(ACCOUNTS_KEY, []);
         const index = accounts.findIndex(a => a.id === id);
         if (index === -1) throw new Error('Account not found: ' + id);
+
+        if (!updated.type) {
+            updated.type = accounts[index].type || 'pterodactyl';
+        }
         
         const merged = { ...accounts[index], ...updated } as any;
         merged.branding = 'SansCraft Network Corp';
@@ -227,7 +229,13 @@ export class AccountManager {
             let skipped = 0;
 
             for (const account of importData.accounts as any[]) {
-                if (!account.type && account.panelUrl) account.type = 'pterodactyl';
+                if (!account.type) {
+                    if (account.panelUrl) {
+                        account.type = 'pterodactyl';
+                    } else if (account.host) {
+                        account.type = 'sftpOnly';
+                    }
+                }
                 
                 if (!account.id || (account.type === 'pterodactyl' && !account.panelUrl)) {
                     skipped++;

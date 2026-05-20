@@ -526,7 +526,8 @@ async function openAddSftpAccountForm(): Promise<void> {
         if (!accountData) { return; }
         const account: SftpOnlyAccount = {
             id: accountManager.generateId(),
-            ...accountData,
+            ...(accountData as any),
+            type: 'sftpOnly',
             branding: 'SansCraft Network Corp',
         };
         try {
