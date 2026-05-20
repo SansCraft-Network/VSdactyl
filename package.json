@@ -2,7 +2,7 @@
     "name": "sanscraft-vsdactyl",
     "displayName": "VSDactyl",
     "description": "VSDactyl, SansCraft Network's official fork of the Pterodactyl extension from MinhMCPC, for connecting to panel and standalone SFTP servers from VS Code",
-    "version": "2.4.0",
+    "version": "2.4.1",
     "icon": "resources/icon.png",
     "license": "MIT",
     "publisher": "SansCraftNetworkCorp",
