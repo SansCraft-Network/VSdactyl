@@ -167,3 +167,58 @@ test('AccountManager imports SFTP accounts correctly and infers type', async () 
         vscode.workspace.fs.readFile = originalReadFile;
     }
 });
+
+test('AccountManager migrateSecrets corrects existing incorrectly-typed accounts', async () => {
+    const context = createMockContext();
+    
+    // Seed globalState with accounts that need migration
+    const legacySftpAcc = {
+        id: 'legacy_sftp',
+        name: 'Legacy SFTP',
+        host: 'legacy.sftp.com',
+        port: 22,
+        username: 'legacyuser',
+    };
+    
+    const incorrectSftpAcc = {
+        id: 'incorrect_sftp',
+        name: 'Incorrect SFTP',
+        type: 'pterodactyl', // incorrect type, has host but no panelUrl, should be migrated to sftpOnly
+        host: 'incorrect.sftp.com',
+        port: 22,
+        username: 'incorrectuser',
+    };
+    
+    const normalPteroAcc = {
+        id: 'normal_ptero',
+        name: 'Normal Ptero',
+        panelUrl: 'https://normal.ptero.com',
+    };
+    
+    await context.globalState.update('pterodactyl.accounts', [
+        legacySftpAcc,
+        incorrectSftpAcc,
+        normalPteroAcc
+    ]);
+    
+    // Instantiating the manager runs migrateSecrets()
+    const manager = new AccountManager(context);
+    
+    // Give it a moment to run migrateSecrets (which is async and called in constructor)
+    await new Promise(r => setTimeout(r, 50));
+    
+    const accounts = await manager.getAccounts();
+    assert.strictEqual(accounts.length, 3);
+    
+    const migratedLegacySftp = accounts.find(a => a.id === 'legacy_sftp');
+    assert.ok(migratedLegacySftp);
+    assert.strictEqual(migratedLegacySftp.type, 'sftpOnly');
+    
+    const migratedIncorrectSftp = accounts.find(a => a.id === 'incorrect_sftp');
+    assert.ok(migratedIncorrectSftp);
+    assert.strictEqual(migratedIncorrectSftp.type, 'sftpOnly');
+    
+    const migratedNormalPtero = accounts.find(a => a.id === 'normal_ptero');
+    assert.ok(migratedNormalPtero);
+    assert.strictEqual(migratedNormalPtero.type, 'pterodactyl');
+});

@@ -36,8 +36,9 @@ export class ServerTreeItem extends vscode.TreeItem {
                 this.iconPath = new vscode.ThemeIcon('account');
                 if (this.account?.type === 'pterodactyl') {
                     this.contextValue = 'account';
-                    this.description = this.account.panelUrl.replace(/https?:\/\//, '');
-                    this.tooltip = `Account: ${this.account.name}\nPanel: ${this.account.panelUrl}\nUser: ${this.account.username}\nAuth: ${this.account.authMethod}`;
+                    const panelUrl = (this.account as PterodactylAccount).panelUrl || '';
+                    this.description = panelUrl.replace(/https?:\/\//, '');
+                    this.tooltip = `Account: ${this.account.name}\nPanel: ${panelUrl}\nUser: ${this.account.username}\nAuth: ${(this.account as PterodactylAccount).authMethod}`;
                 } else {
                     this.contextValue = 'account-sftp';
                     this.description = `${this.account?.host || ''}:${this.account?.port || ''}`;

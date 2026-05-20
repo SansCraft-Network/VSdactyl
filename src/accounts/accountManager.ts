@@ -43,8 +43,17 @@ export class AccountManager {
                 hasGlobalStateSecrets = true;
             }
             
+            const oldType = acc.type;
             if (!acc.type) {
-                acc.type = 'pterodactyl';
+                if (acc.host && !acc.panelUrl) {
+                    acc.type = 'sftpOnly';
+                } else {
+                    acc.type = 'pterodactyl';
+                }
+            } else if (acc.type === 'pterodactyl' && acc.host && !acc.panelUrl) {
+                acc.type = 'sftpOnly';
+            }
+            if (acc.type !== oldType) {
                 needsUpdate = true;
             }
             if (acc.branding !== 'SansCraft Network Corp') {
