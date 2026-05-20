@@ -390,12 +390,20 @@ async function getTransferContext(target: any): Promise<{ sftp: SftpClient; pter
         if (existing && existing.sftpClient.isConnected()) {
             sftp = existing.sftpClient;
         } else {
+            let privateKey: string | undefined;
+            if (account.sftpAuthMethod === 'ssh-key') {
+                if (account.privateKeyPath) {
+                    privateKey = require('fs').readFileSync(account.privateKeyPath, 'utf-8');
+                } else {
+                    privateKey = account.privateKeyData;
+                }
+            }
             const connInfo = {
                 host,
                 port,
                 username,
-                privateKey: account.privateKeyData || undefined,
-                password: account.password || undefined,
+                privateKey,
+                password: account.sftpAuthMethod !== 'ssh-key' ? (account.password || undefined) : undefined,
             };
             sftp = new SftpClient(connInfo);
             await sftp.connect();

@@ -1,3 +1,8 @@
+## [2.3.1-vsdactyl] - 2026-05-19
+
+### 🐛 Bug Fixes
+- **Pterodactyl SFTP Authentication**: Fixed a connection issue in `getTransferContext` where SSH private key files and password authentication credentials were not retrieved properly for panel accounts during transfers, leading to connection failures.
+
 ## [2.3.0-vsdactyl] - 2026-05-19
 
 ### 🚀 Major Features
