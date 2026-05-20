@@ -11,9 +11,11 @@ VSDactyl, SansCraft Network's official fork of the original Pterodactyl extensio
 - **Embedded Web View**: Open your Pterodactyl server's control panel directly inside a VS Code editor tab.
 - **Hardware Metrics Telemetry**: View real-time CPU, RAM, and Disk usage directly in the VS Code Tree View, complete with visual alerts for high-usage scenarios.
 - **API-Accelerated File Operations**: Directory deletions utilize the ultra-fast Pterodactyl API backend instead of slow recursive SFTP unlink commands.
+- **Recursive Sidebar File Explorer**: Expand and explore your remote server files directly inside the VSDactyl **Servers** sidebar tree view.
+- **Server-Side Archive Management**: Fast, Wing-native compression and decompression commands to package/unpackage remote directories instantly.
 - **Core SFTP Integrity**: Robust SFTP Keep-Alive heartbeat ensures large file modifications don't drop unexpectedly.
 - Connect to Pterodactyl panel servers and standalone SFTP endpoints.
-- Browse, edit, create, rename, and delete remote files from the VS Code Explorer.
+- Browse, edit, create, rename, and delete remote files from the VS Code Explorer, or manage them directly from the Servers sidebar tree view.
 - Open a live terminal to send commands to a server console.
 - Start, stop, restart, or kill panel-backed servers from the tree view.
 - Store account secrets securely through VS Code secret storage.
@@ -82,6 +84,8 @@ The command IDs stay compatible with the original extension surface, but the use
 - `pterodactyl.importData` - Import account data.
 - `pterodactyl.setupSshKey` - Generate and upload an SSH key.
 - `pterodactyl.showSftpLog` - Show SFTP debug output.
+- `pterodactyl.compressFile` - Compress selected files/folders server-side.
+- `pterodactyl.decompressFile` - Decompress selected archive files server-side.
 
 ## Requirements
 

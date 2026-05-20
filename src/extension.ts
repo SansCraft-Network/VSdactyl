@@ -10,18 +10,24 @@ import { SftpAccountFormPanel } from './views/sftpAccountFormPanel';
 import { SftpClient } from './sftp/sftpClient';
 import { TerminalManager } from './terminal/terminalManager';
 import { TransferManager } from './transfers/transferManager';
+import { TransferOrchestrator } from './transfers/transferOrchestrator';
+import { BulkTransferEngine } from './transfers/bulkTransferEngine';
 import { SyncManager } from './sync/syncManager';
 
-let accountManager: AccountManager;
-let serverTreeProvider: ServerTreeProvider;
-let fileSystemProvider: PterodactylFileSystemProvider;
-let sftpFileSystemProvider: SftpOnlyFileSystemProvider;
-let remoteDecorationProvider: RemoteFileDecorationProvider;
-let terminalManager: TerminalManager;
-let extensionContext: vscode.ExtensionContext;
+let accountManager!: AccountManager;
+let serverTreeProvider!: ServerTreeProvider;
+let fileSystemProvider!: PterodactylFileSystemProvider;
+let sftpFileSystemProvider!: SftpOnlyFileSystemProvider;
+let remoteDecorationProvider!: RemoteFileDecorationProvider;
+let terminalManager!: TerminalManager;
+let transferManager!: TransferManager;
+let transferOrchestrator!: TransferOrchestrator;
+let syncManager!: SyncManager;
+let extensionContext!: vscode.ExtensionContext;
 
 import { Logger } from './utils/logger';
 import { PanelProxy } from './utils/panelProxy';
+import { SshKeyGenerator } from './utils/sshKeyGenerator';
 
 export function activate(context: vscode.ExtensionContext) {
     Logger.initialize();
@@ -33,207 +39,453 @@ export function activate(context: vscode.ExtensionContext) {
     accountManager = new AccountManager(context);
     serverTreeProvider = new ServerTreeProvider(accountManager);
     remoteDecorationProvider = new RemoteFileDecorationProvider();
-    fileSystemProvider = new PterodactylFileSystemProvider(remoteDecorationProvider);
-    sftpFileSystemProvider = new SftpOnlyFileSystemProvider(remoteDecorationProvider);
+    // Initialize core systems
+    fileSystemProvider = new PterodactylFileSystemProvider();
+    sftpFileSystemProvider = new SftpOnlyFileSystemProvider();
+    serverTreeProvider.setFileSystemProviders(fileSystemProvider, sftpFileSystemProvider);
     terminalManager = new TerminalManager();
+    transferManager = TransferManager.getInstance(context);
+    transferOrchestrator = new TransferOrchestrator(transferManager, new BulkTransferEngine());
+    fileSystemProvider.setOrchestrator(transferOrchestrator);
+    sftpFileSystemProvider.setOrchestrator(transferOrchestrator);
+    syncManager = SyncManager.getInstance(context, accountManager);
 
-    // Initialize background singletons
-    TransferManager.getInstance(context);
-    SyncManager.getInstance(context, accountManager);
+    // Register file system providers
+    context.subscriptions.push(vscode.workspace.registerFileSystemProvider('ptero', fileSystemProvider, { isCaseSensitive: true }));
+    context.subscriptions.push(vscode.workspace.registerFileSystemProvider('sftp', sftpFileSystemProvider, { isCaseSensitive: true }));
 
-    // Register FileSystemProvider for ptero:// scheme
-    context.subscriptions.push(
-        vscode.workspace.registerFileSystemProvider('ptero', fileSystemProvider, {
-            isCaseSensitive: true,
-            isReadonly: false,
-        })
-    );
-
-    // Register FileSystemProvider for sftp:// scheme
-    context.subscriptions.push(
-        vscode.workspace.registerFileSystemProvider('sftp', sftpFileSystemProvider, {
-            isCaseSensitive: true,
-            isReadonly: false,
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.window.registerFileDecorationProvider(remoteDecorationProvider)
-    );
-
-    // Register TreeView
+    // Register tree view with drag & drop support
     const treeView = vscode.window.createTreeView('pterodactylServers', {
         treeDataProvider: serverTreeProvider,
-        showCollapseAll: true,
         dragAndDropController: new ServerTreeDragAndDropController(),
+        canSelectMany: false,
     });
     context.subscriptions.push(treeView);
 
+    context.subscriptions.push(treeView.onDidExpandElement(e => {
+        if (e.element.nodeType === 'server' && e.element.server) {
+            serverTreeProvider.setServerExpanded(e.element.server.uuid, true, e.element);
+        }
+    }));
+    context.subscriptions.push(treeView.onDidCollapseElement(e => {
+        if (e.element.nodeType === 'server' && e.element.server) {
+            serverTreeProvider.setServerExpanded(e.element.server.uuid, false);
+        }
+    }));
+
+    // Register decoration provider
+    context.subscriptions.push(vscode.window.registerFileDecorationProvider(remoteDecorationProvider));
 
     // Register commands
-    context.subscriptions.push(
-        vscode.commands.registerCommand('pterodactyl.addAccount', () => openAddAccountForm()),
-        vscode.commands.registerCommand('pterodactyl.initSyncConfig', (item?: ServerTreeItem) => {
-            if (item) SyncManager.getInstance(context).initSyncConfigCommand(item);
-        }),
-        vscode.commands.registerCommand('pterodactyl.addSftpAccount', () => openAddSftpAccountForm()),
-        vscode.commands.registerCommand('pterodactyl.editAccount', (item?: ServerTreeItem) => openEditAccountForm(item)),
-        vscode.commands.registerCommand('pterodactyl.removeAccount', (item?: ServerTreeItem) => removeAccount(item)),
-        vscode.commands.registerCommand('pterodactyl.refreshServers', () => refreshServers()),
-        vscode.commands.registerCommand('pterodactyl.connectServer', (item?: ServerTreeItem) => connectToServer(item)),
-        vscode.commands.registerCommand('pterodactyl.disconnectServer', (item?: ServerTreeItem) => disconnectServer(item)),
-        vscode.commands.registerCommand('pterodactyl.reconnectServer', (item?: ServerTreeItem) => reconnectServer(item)),
-        vscode.commands.registerCommand('pterodactyl.exportData', () => accountManager.exportAccounts()),
-        vscode.commands.registerCommand('pterodactyl.importData', () => accountManager.importAccounts()),
-        vscode.commands.registerCommand('pterodactyl.showSftpLog', () => SftpClient.showDebugLog()),
-        vscode.commands.registerCommand('pterodactyl.setupSshKey', () => setupSshKey()),
-        vscode.commands.registerCommand('pterodactyl.uploadToNode', async (item: ServerTreeItem, uris: vscode.Uri[]) => {
-            const conn = fileSystemProvider.getConnection(item.server!.identifier);
-            if (!conn) {
-                vscode.window.showErrorMessage('You must connect to the server first before dropping files.');
-                return;
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.addAccount', () => openAddAccountForm()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.addSftpAccount', () => openAddSftpAccountForm()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.editAccount', (item?: any) => openEditAccountForm(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.removeAccount', (item?: any) => removeAccount(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.refreshServers', () => refreshServers()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.connectServer', (item?: any) => connectToServer(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.disconnectServer', (item?: any) => disconnectServer(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.reconnectServer', (item?: any) => reconnectServer(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.openTerminal', (item?: any) => openTerminal(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.openPanelWebView', (item?: any) => openPanelWebView(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.showTransferManager', () => transferManager.showDashboard()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.exportData', () => accountManager.exportAccounts()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.importData', () => accountManager.importAccounts()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.setupSshKey', () => setupSshKey()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.showSftpLog', () => Logger.show()));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.editConnectionFromExplorer', (item?: any) => openEditAccountForm(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.startServer', (item?: any) => sendPowerSignal(item, 'start')));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.restartServer', (item?: any) => sendPowerSignal(item, 'restart')));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.stopServer', (item?: any) => sendPowerSignal(item, 'stop')));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.killServer', (item?: any) => sendPowerSignal(item, 'kill')));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.initSyncConfig', (item?: any) => syncManager.initSyncConfigCommand(item)));
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.downloadFromNode', async (target?: any) => {
+        await downloadFromNode(target);
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.decompressFile', async (target?: ServerTreeItem) => {
+        if (!target || !target.account || !target.server || !target.path) {
+            vscode.window.showErrorMessage('Invalid target for decompression.');
+            return;
+        }
+
+        const account = target.account;
+        if (account.type !== 'pterodactyl') return;
+        const server = target.server;
+        const filePath = target.path;
+
+        const path = require('path');
+        const directory = path.posix.dirname(filePath);
+        const filename = path.posix.basename(filePath);
+
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Decompressing ${filename} server-side...`,
+                cancellable: false
+            }, async () => {
+                const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
+                await client.decompressFile(server.uuid, directory, filename);
+            });
+            vscode.window.showInformationMessage(`Successfully decompressed ${filename}.`);
+            serverTreeProvider.refresh();
+        } catch (err: any) {
+            Logger.error('Decompression failed', err);
+            vscode.window.showErrorMessage(`Decompression failed: ${err.message || err}`);
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.compressFile', async (target?: ServerTreeItem) => {
+        if (!target || !target.account || !target.server || !target.path) {
+            vscode.window.showErrorMessage('Invalid target for compression.');
+            return;
+        }
+
+        const account = target.account;
+        if (account.type !== 'pterodactyl') return;
+        const server = target.server;
+        const filePath = target.path;
+
+        const path = require('path');
+        const directory = path.posix.dirname(filePath);
+        const filename = path.posix.basename(filePath);
+
+        const archiveName = await vscode.window.showInputBox({
+            prompt: 'Enter the name of the archive to create',
+            value: `${filename}.tar.gz`,
+            validateInput: (value) => value ? null : 'Archive name is required'
+        });
+
+        if (!archiveName) {
+            return;
+        }
+
+        try {
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: `Compressing to ${archiveName} server-side...`,
+                cancellable: false
+            }, async () => {
+                const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
+                await client.compressFiles(server.uuid, directory, [filename]);
+            });
+            vscode.window.showInformationMessage(`Compression started for ${filename}.`);
+            serverTreeProvider.refresh();
+        } catch (err: any) {
+            Logger.error('Compression failed', err);
+            vscode.window.showErrorMessage(`Compression failed: ${err.message || err}`);
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.uploadToNode', async (target?: any, uris?: vscode.Uri[]) => {
+        if (!target || !target.account || !uris || uris.length === 0) return;
+        const isPtero = target.account.type === 'pterodactyl';
+        if (isPtero && !target.server) return;
+        try {
+            Logger.info(`Command: uploadToNode invoked for target account=${target.account?.id || target.account?.name} uris=${uris.map(u=>u.toString()).join(',')}`);
+            const transferContext = await getTransferContext(target);
+            Logger.debug(`Upload: obtained transfer context for server=${transferContext.serverIdentifier}`);
+            const session = await transferOrchestrator.upload({
+                localUris: uris,
+                remoteDestinationPath: target.path || '/',
+                sftpClient: transferContext.sftp,
+                pteroClient: transferContext.ptero,
+                serverIdentifier: transferContext.serverIdentifier,
+            });
+            Logger.info(`Upload: started session ${session.id} title="${session.title}" for server=${session.serverIdentifier}`);
+        } catch (e: any) {
+            Logger.error('Upload to node failed', e);
+            vscode.window.showErrorMessage(`Upload failed: ${e.message || e}`);
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.moveOnNode', async (target?: any, uris?: vscode.Uri[]) => {
+        if (!target || !target.account || !uris || uris.length === 0) return;
+        const isPtero = target.account.type === 'pterodactyl';
+        if (isPtero && !target.server) return;
+        try {
+            Logger.info(`Command: moveOnNode invoked for target account=${target.account?.id || target.account?.name} uris=${uris.map(u=>u.toString()).join(',')}`);
+            const transferContext = await getTransferContext(target);
+            const sftp = transferContext.sftp;
+
+            // Register a Move session with the TransferManager
+            const transferManager = TransferManager.getInstance(extensionContext);
+            const session = transferManager.registerSession({
+                id: `move_${Date.now()}`,
+                type: 'upload',
+                serverIdentifier: transferContext.serverIdentifier,
+                title: uris.length === 1 ? `Move ${require('path').basename(uris[0].path)}` : `Move ${uris.length} items`,
+                mode: uris.length > 1 ? 'multi' : 'single',
+                fileCountTotal: uris.length,
+                fileCountCompleted: 0,
+                bytesTotal: 0,
+                bytesTransferred: 0,
+                status: 'running',
+                children: uris.map((uri, idx) => ({
+                    id: `move_child_${Date.now()}_${idx}`,
+                    label: `Move ${uri.path}`,
+                    sourcePath: uri.path,
+                    targetPath: `/${uri.path.split('/').filter(Boolean).pop() || ''}`,
+                    bytesTotal: 0,
+                    bytesTransferred: 0,
+                    status: 'pending'
+                })),
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            });
+
+            for (let i = 0; i < uris.length; i++) {
+                const uri = uris[i];
+                const child = session.children[i];
+                transferManager.updateChildStatus(session.id, child.id, 'running');
+
+                const sourcePath = uri.path || uri.fsPath || '';
+                const base = sourcePath.split('/').filter(Boolean).pop() || '';
+                const destPath = `/${base}`;
+                Logger.debug(`MoveOnNode: renaming ${sourcePath} -> ${destPath} on ${transferContext.serverIdentifier}`);
+                try {
+                    await sftp.rename(sourcePath, destPath, { overwrite: true });
+                    transferManager.completeChild(session.id, child.id, true);
+                } catch (err: any) {
+                    Logger.error(`MoveOnNode failed for ${sourcePath}`, err);
+                    transferManager.completeChild(session.id, child.id, false, err.message || err);
+                }
             }
-            if (item.account?.type !== 'pterodactyl') {
-                return; // Type guard to ensure we have panelUrl and apiKey
+        } catch (e: any) {
+            Logger.error('MoveOnNode failed', e);
+            vscode.window.showErrorMessage(`Move failed: ${e.message || e}`);
+        }
+    }));
+
+    context.subscriptions.push(vscode.commands.registerCommand('pterodactyl.transferBetweenServers', async (target?: any, uris?: vscode.Uri[]) => {
+        if (!target || !target.account || !uris || uris.length === 0) return;
+        const isPtero = target.account.type === 'pterodactyl';
+        if (isPtero && !target.server) return;
+
+        try {
+            Logger.info(`Command: transferBetweenServers invoked for target account=${target.account?.id} uris=${uris.map(u=>u.toString()).join(',')}`);
+            const destContext = await getTransferContext(target);
+            const destSftp = destContext.sftp;
+
+            const transferManager = TransferManager.getInstance(extensionContext);
+            const path = require('path');
+            const fs = require('fs');
+            const os = require('os');
+
+            const session = transferManager.registerSession({
+                id: `transfer_${Date.now()}`,
+                type: 'upload',
+                serverIdentifier: destContext.serverIdentifier,
+                title: uris.length === 1 ? `Transfer ${path.basename(uris[0].path)}` : `Transfer ${uris.length} items`,
+                mode: uris.length > 1 ? 'multi' : 'single',
+                fileCountTotal: uris.length,
+                fileCountCompleted: 0,
+                bytesTotal: 0,
+                bytesTransferred: 0,
+                status: 'running',
+                children: uris.map((uri, idx) => ({
+                    id: `transfer_child_${Date.now()}_${idx}`,
+                    label: `${path.basename(uri.path)} (${uri.authority} -> ${destContext.serverIdentifier})`,
+                    sourcePath: uri.path,
+                    targetPath: `/${path.basename(uri.path)}`,
+                    bytesTotal: 0,
+                    bytesTransferred: 0,
+                    status: 'pending'
+                })),
+                createdAt: Date.now(),
+                updatedAt: Date.now()
+            });
+
+            for (let i = 0; i < uris.length; i++) {
+                const uri = uris[i];
+                const child = session.children[i];
+                transferManager.updateChildStatus(session.id, child.id, 'running');
+
+                const sourcePath = uri.path || uri.fsPath || '';
+                const base = sourcePath.split('/').filter(Boolean).pop() || '';
+                const destPath = `/${base}`;
+
+                const sourceConn = uri.scheme === 'ptero' ? fileSystemProvider.getConnection(uri.authority) : sftpFileSystemProvider.getConnection(uri.authority);
+                if (!sourceConn) {
+                    transferManager.completeChild(session.id, child.id, false, `Not connected to source server: ${uri.authority}`);
+                    continue;
+                }
+
+                const tempFile = path.join(os.tmpdir(), `vsdactyl_transfer_${Date.now()}_${base}`);
+
+                try {
+                    // Download from source
+                    const stat = await sourceConn.sftpClient.stat(sourcePath);
+                    child.bytesTotal = stat.size;
+                    session.bytesTotal += stat.size;
+                    transferManager.upsertSession(session);
+
+                    const remoteStream = await sourceConn.sftpClient.readFileStream(sourcePath);
+                    const localStream = fs.createWriteStream(tempFile);
+                    await new Promise<void>((resolve, reject) => {
+                        let bytesDownloaded = 0;
+                        remoteStream.on('data', (chunk: any) => {
+                            bytesDownloaded += chunk.length;
+                            transferManager.updateChildProgress(session.id, child.id, Math.floor(bytesDownloaded / 2));
+                        });
+                        remoteStream.on('error', reject);
+                        localStream.on('error', reject);
+                        localStream.on('close', resolve);
+                        remoteStream.pipe(localStream);
+                    });
+
+                    // Upload to destination
+                    const localReadStream = fs.createReadStream(tempFile);
+                    const remoteWriteStream = await destSftp.writeFileStream(destPath);
+                    await new Promise<void>((resolve, reject) => {
+                        let bytesUploaded = 0;
+                        localReadStream.on('data', (chunk: any) => {
+                            bytesUploaded += chunk.length;
+                            transferManager.updateChildProgress(session.id, child.id, Math.floor(stat.size / 2) + Math.floor(bytesUploaded / 2));
+                        });
+                        localReadStream.on('error', reject);
+                        remoteWriteStream.on('error', reject);
+                        remoteWriteStream.on('close', resolve);
+                        localReadStream.pipe(remoteWriteStream);
+                    });
+
+                    transferManager.completeChild(session.id, child.id, true);
+                } catch (err: any) {
+                    Logger.error(`Transfer failed for ${sourcePath}`, err);
+                    transferManager.completeChild(session.id, child.id, false, err.message || err);
+                } finally {
+                    try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
+                }
             }
-            const pteroClient = new PterodactylClient(item.account.panelUrl, item.account.apiKey || '');
-            const transferManager = TransferManager.getInstance(context);
-            await transferManager.initiateArchiveAssistedUpload(
-                uris,
-                '/', // Upload to root directory by default for TreeView drops
-                conn.sftpClient,
-                pteroClient,
-                item.server!.identifier
-            );
-        }),
-        vscode.commands.registerCommand('pterodactyl.showTransferManager', () => TransferManager.getInstance(context).showDashboard()),
-        vscode.commands.registerCommand('pterodactyl.openTerminal', (item?: ServerTreeItem) => openTerminal(item)),
-        vscode.commands.registerCommand('pterodactyl.openPanelWebView', (item?: ServerTreeItem) => openPanelWebView(item)),
-        vscode.commands.registerCommand('pterodactyl.editConnectionFromExplorer', (uri?: vscode.Uri) => editConnectionFromExplorer(uri)),
+        } catch (e: any) {
+            Logger.error('TransferBetweenServers failed', e);
+            vscode.window.showErrorMessage(`Transfer failed: ${e.message || e}`);
+        }
+    }));
 
-        // Power Actions
-        vscode.commands.registerCommand('pterodactyl.startServer', (item?: ServerTreeItem) => sendPowerSignal(item, 'start')),
-        vscode.commands.registerCommand('pterodactyl.restartServer', (item?: ServerTreeItem) => sendPowerSignal(item, 'restart')),
-        vscode.commands.registerCommand('pterodactyl.stopServer', (item?: ServerTreeItem) => sendPowerSignal(item, 'stop')),
-        vscode.commands.registerCommand('pterodactyl.killServer', (item?: ServerTreeItem) => sendPowerSignal(item, 'kill')),
-    );
-
-    // Auto-restore connections
-    restoreConnections();
-
-    Logger.info('VSDactyl extension activated');
+    Logger.info('Extension activated.');
 }
 
-// ... existing functions ...
-
-import { SshKeyGenerator } from './utils/sshKeyGenerator';
-
-async function collectSftpAccountData(existingAccount?: SftpOnlyAccount): Promise<Omit<SftpOnlyAccount, 'id'> | undefined> {
-    const name = await vscode.window.showInputBox({
-        prompt: 'Enter a display name for this SFTP connection',
-        value: existingAccount?.name || '',
-        validateInput: (value) => value.trim() ? null : 'Name is required',
-    });
-    if (!name) { return undefined; }
-
-    const host = await vscode.window.showInputBox({
-        prompt: 'Enter the SFTP host',
-        value: existingAccount?.host || '',
-        placeHolder: 'sftp.example.com',
-        validateInput: (value) => value.trim() ? null : 'Host is required',
-    });
-    if (!host) { return undefined; }
-
-    const portInput = await vscode.window.showInputBox({
-        prompt: 'Enter the SFTP port',
-        value: String(existingAccount?.port || 22),
-        placeHolder: '22',
-        validateInput: (value) => {
-            const port = Number.parseInt(value, 10);
-            return Number.isInteger(port) && port > 0 && port <= 65535 ? null : 'Enter a valid port between 1 and 65535';
-        },
-    });
-    if (!portInput) { return undefined; }
-
-    const username = await vscode.window.showInputBox({
-        prompt: 'Enter the SFTP username',
-        value: existingAccount?.username || '',
-        placeHolder: 'ubuntu',
-        validateInput: (value) => value.trim() ? null : 'Username is required',
-    });
-    if (!username) { return undefined; }
-
-    const authChoice = await vscode.window.showQuickPick(
-        [
-            { label: 'SSH Key', description: 'Authenticate with a private key file', value: 'ssh-key' as const },
-            { label: 'Password', description: 'Authenticate with a password', value: 'password' as const },
-        ],
-        {
-            placeHolder: 'Select the SFTP authentication method',
-            ignoreFocusOut: true,
-            canPickMany: false,
-        }
-    );
-    if (!authChoice) { return undefined; }
-
-    let privateKeyPath = existingAccount?.privateKeyPath || '';
-    let privateKeyData = existingAccount?.privateKeyData || '';
-    let password = existingAccount?.password || '';
-
-    if (authChoice.value === 'ssh-key') {
-        const keyPath = await vscode.window.showInputBox({
-            prompt: existingAccount ? 'SSH private key path (leave blank to keep current key)' : 'SSH private key path',
-            value: existingAccount?.privateKeyPath || '',
-            placeHolder: 'C:\\Users\\you\\.ssh\\id_ed25519',
-            validateInput: (value) => {
-                if (value.trim()) { return null; }
-                return (existingAccount?.privateKeyPath || existingAccount?.privateKeyData) ? null : 'SSH private key path is required';
-            },
-        });
-        if (keyPath === undefined) { return undefined; }
-
-        if (keyPath.trim()) {
-            privateKeyPath = keyPath.trim();
-            privateKeyData = '';
-        } else if (!existingAccount?.privateKeyPath && !existingAccount?.privateKeyData) {
-            return undefined;
-        }
-
-        password = '';
-    } else {
-        const passwordInput = await vscode.window.showInputBox({
-            prompt: existingAccount ? 'SFTP password (leave blank to keep current password)' : 'Enter the SFTP password',
-            password: true,
-            placeHolder: existingAccount?.password ? 'Leave blank to keep current password' : 'SFTP password',
-            validateInput: (value) => {
-                if (value.length > 0) { return null; }
-                return existingAccount?.password ? null : 'Password is required';
-            },
-        });
-        if (passwordInput === undefined) { return undefined; }
-
-        if (passwordInput.length > 0) {
-            password = passwordInput;
-        } else if (!existingAccount?.password) {
-            return undefined;
-        }
-
-        privateKeyPath = '';
-        privateKeyData = '';
+async function getTransferContext(target: any): Promise<{ sftp: SftpClient; ptero?: PterodactylClient; serverIdentifier: string }> {
+    if (!target || !target.account) {
+        throw new Error('Target must include account context');
     }
 
-    return {
-        name,
-        type: 'sftpOnly',
-        branding: 'SansCraft Network Corp',
-        username,
-        host,
-        port: Number.parseInt(portInput, 10),
-        sftpAuthMethod: authChoice.value,
-        privateKeyPath,
-        privateKeyData,
-        password: password || undefined,
-    };
+    const account = await accountManager.getAccountById(target.account.id);
+    if (!account) {
+        throw new Error('Account not found');
+    }
+
+    if (account.type === 'pterodactyl') {
+        if (!target.server) {
+            throw new Error('Target must include server context for panel accounts');
+        }
+        const ptero = new PterodactylClient(account.panelUrl, account.apiKey || '');
+        const host = target.server.sftp_details.ip;
+        const port = target.server.sftp_details.port || 2022;
+        const username = `${account.username}.${target.server.identifier}`;
+
+        // Try to reuse active connection from fileSystemProvider if registered
+        let sftp: SftpClient | undefined;
+        const existing = fileSystemProvider.getConnection(target.server.identifier);
+        if (existing && existing.sftpClient.isConnected()) {
+            sftp = existing.sftpClient;
+        } else {
+            const connInfo = {
+                host,
+                port,
+                username,
+                privateKey: account.privateKeyData || undefined,
+                password: account.password || undefined,
+            };
+            sftp = new SftpClient(connInfo);
+            await sftp.connect();
+        }
+
+        return {
+            sftp,
+            ptero,
+            serverIdentifier: target.server.identifier,
+        };
+    } else {
+        // standalone SFTP account
+        let sftp: SftpClient | undefined;
+        const existing = sftpFileSystemProvider.getConnection(account.id);
+        if (existing && existing.sftpClient.isConnected()) {
+            sftp = existing.sftpClient;
+        } else {
+            let privateKey: string | undefined;
+            if (account.sftpAuthMethod === 'ssh-key') {
+                if (account.privateKeyPath) {
+                    privateKey = require('fs').readFileSync(account.privateKeyPath, 'utf-8');
+                } else {
+                    privateKey = account.privateKeyData;
+                }
+            }
+            const connInfo = {
+                host: account.host,
+                port: account.port,
+                username: account.username,
+                privateKey,
+                password: account.password || undefined,
+            };
+            sftp = new SftpClient(connInfo);
+            await sftp.connect();
+        }
+
+        return {
+            sftp,
+            serverIdentifier: account.id,
+        };
+    }
+}
+
+async function downloadFromNode(target?: any): Promise<void> {
+    if (!target || !target.account) {
+        vscode.window.showWarningMessage('Select a connection node first to download files.');
+        return;
+    }
+    const isPtero = target.account.type === 'pterodactyl';
+    if (isPtero && !target.server) {
+        vscode.window.showWarningMessage('Select a server node first to download files.');
+        return;
+    }
+
+    const remoteSourcePath = await vscode.window.showInputBox({
+        title: 'Download Folder From Node',
+        prompt: 'Enter remote folder path to download as archive',
+        value: target.path || '/',
+        validateInput: (value) => value.trim().length === 0 ? 'Path is required' : null,
+    });
+    if (!remoteSourcePath) {
+        return;
+    }
+
+    const localTarget = await vscode.window.showOpenDialog({
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        title: 'Select local destination folder',
+        openLabel: 'Download here',
+    });
+    if (!localTarget || localTarget.length === 0) {
+        return;
+    }
+
+    try {
+        const transferContext = await getTransferContext(target);
+        const archiveName = `vsdactyl-download-${Date.now().toString(36)}.tar.gz`;
+        await transferOrchestrator.download({
+            remoteSourcePath,
+            remoteArchiveName: archiveName,
+            localDestinationPath: localTarget[0].fsPath,
+            sftpClient: transferContext.sftp,
+            pteroClient: transferContext.ptero,
+            serverIdentifier: transferContext.serverIdentifier,
+        });
+    } catch (e: any) {
+        Logger.error('Download from node failed', e);
+        vscode.window.showErrorMessage(`Download failed: ${e.message || e}`);
+    }
 }
 
 async function openAddSftpAccountForm(): Promise<void> {
@@ -312,6 +564,14 @@ async function setupSshKey(): Promise<void> {
         Logger.error('Failed to setup SSH key', err);
         vscode.window.showErrorMessage(`Failed to setup SSH Key: ${err.message}`);
     }
+}
+
+async function collectSftpAccountData(account?: SftpOnlyAccount): Promise<any> {
+    return new Promise((resolve) => {
+        SftpAccountFormPanel.show(extensionContext.extensionUri, (data: any) => {
+            resolve(data);
+        }, account);
+    });
 }
 
 
@@ -837,6 +1097,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
     // Handle messages from the webview
     panel.webview.onDidReceiveMessage(async (message) => {
         if (message.command === 'openPanelFile') {
+            console.log('[VSDactyl Debug] Webview requested file open:', message.data);
             const { filePath, fileName } = message.data;
             try {
                 await handleOpenPanelFile(filePath, fileName, item);
@@ -845,10 +1106,22 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
             }
         } else if (message.command === 'getProxyHost') {
             try {
+                console.log('[VSDactyl Debug] Webview requested proxy host for:', message.url);
                 const host = await PanelProxy.getProxyHostFor(message.url);
+                console.log('[VSDactyl Debug] Returning proxy host:', host, 'for', message.url);
                 panel.webview.postMessage({ command: 'proxyHost', host, forUrl: message.url });
             } catch (e: any) {
+                console.error('[VSDactyl Debug] Failed to create proxy host for', message.url, e?.message);
                 panel.webview.postMessage({ command: 'proxyHost', error: e.message, forUrl: message.url });
+            }
+        } else if (message.command === 'openExternal') {
+            try {
+                const url = message.url;
+                if (url) {
+                    vscode.env.openExternal(vscode.Uri.parse(url));
+                }
+            } catch (e: any) {
+                console.error('[VSDactyl Debug] Failed to open external URL:', e?.message);
             }
         }
     });
@@ -896,6 +1169,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
         <body>
             <div class="fallback-notice" id="notice">
                 Loading panel...
+                <button id="external-auth" style="margin-left:12px; display:none;">Open in external browser</button>
             </div>
             <iframe src="${serverUrl}" id="panel-frame" allow="clipboard-read; clipboard-write;"></iframe>
             <script>
@@ -903,9 +1177,222 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                 const notice = document.getElementById('notice');
                 const frame = document.getElementById('panel-frame');
                 const credentials = ${credentialsJson};
+                const panelOrigin = ${JSON.stringify(new URL(item.account.panelUrl).origin)};
                 
                 let loaded = false;
                 let contextMenu = null;
+                let navigationMonitor = null;
+                let lastRequestedProxyUrl = null;
+
+                function isExternalUrl(targetUrl) {
+                    try {
+                        return new URL(targetUrl, panelOrigin).origin !== panelOrigin;
+                    } catch (e) {
+                        console.warn('[VSDactyl Debug] Failed to evaluate URL origin:', targetUrl, e.message);
+                        return false;
+                    }
+                }
+
+                function requestProxyForUrl(targetUrl, reason) {
+                    if (!targetUrl) {
+                        return;
+                    }
+
+                    if (targetUrl === lastRequestedProxyUrl) {
+                        return;
+                    }
+
+                    lastRequestedProxyUrl = targetUrl;
+                    console.log('[VSDactyl Debug] Requesting proxy for', reason, targetUrl);
+                    vscode.postMessage({ command: 'getProxyHost', url: targetUrl });
+                }
+
+                function startNavigationMonitor() {
+                    if (navigationMonitor) {
+                        clearInterval(navigationMonitor);
+                    }
+
+                    navigationMonitor = setInterval(() => {
+                        try {
+                            const currentUrl = frame.contentWindow.location.href;
+                            if (currentUrl && isExternalUrl(currentUrl)) {
+                                console.log('[VSDactyl Debug] External navigation detected via currentUrl:', currentUrl);
+                                requestProxyForUrl(currentUrl, 'navigation monitor');
+                            }
+                        } catch (e) {
+                            const src = frame.src;
+                            if (src && isExternalUrl(src)) {
+                                console.log('[VSDactyl Debug] Cross-origin iframe detected via src:', src);
+                                requestProxyForUrl(src, 'cross-origin iframe');
+                            }
+                        }
+                    }, 500);
+                }
+
+                function injectNavigationInterceptor() {
+                    try {
+                        const doc = frame.contentDocument;
+                        if (!doc) {
+                            console.log('[VSDactyl Debug] Cannot inject interceptor - cross-origin or doc not accessible');
+                            return;
+                        }
+
+                        // Create a script that will intercept navigation
+                        const script = doc.createElement('script');
+                        script.textContent = \`
+                            (function() {
+                                const panelOrigin = ${JSON.stringify(new URL(item.account.panelUrl).origin)};
+                                let navigationInProgress = false;
+
+                                function isExternalUrl(url) {
+                                    try {
+                                        const parsed = new URL(url, window.location.href);
+                                        return parsed.origin !== panelOrigin;
+                                    } catch (e) {
+                                        return false;
+                                    }
+                                }
+
+                                function handleExternalNavigation(url, source) {
+                                    if (navigationInProgress) return;
+                                    if (!isExternalUrl(url)) return;
+
+                                    navigationInProgress = true;
+                                    console.log('[VSDactyl Interceptor] External navigation detected via ' + source + ':', url);
+                                    
+                                    // Send message to parent frame to request proxy
+                                    window.parent.postMessage({
+                                        command: 'requestProxy',
+                                        url: url,
+                                        source: source
+                                    }, '*');
+
+                                    // Prevent the navigation from happening
+                                    return false;
+                                }
+
+                                // Hook location.href setter
+                                const locationDescriptor = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+                                if (locationDescriptor) {
+                                    const originalSetter = locationDescriptor.set;
+                                    Object.defineProperty(Location.prototype, 'href', {
+                                        get: locationDescriptor.get,
+                                        set: function(url) {
+                                            if (handleExternalNavigation(url, 'location.href')) {
+                                                return;
+                                            }
+                                            return originalSetter.call(this, url);
+                                        }
+                                    });
+                                }
+
+                                // Hook location.assign()
+                                const originalAssign = Location.prototype.assign;
+                                Location.prototype.assign = function(url) {
+                                    if (handleExternalNavigation(url, 'location.assign')) {
+                                        return;
+                                    }
+                                    return originalAssign.call(this, url);
+                                };
+
+                                // Hook location.replace()
+                                const originalReplace = Location.prototype.replace;
+                                Location.prototype.replace = function(url) {
+                                    if (handleExternalNavigation(url, 'location.replace')) {
+                                        return;
+                                    }
+                                    return originalReplace.call(this, url);
+                                };
+
+                                // Hook window.open()
+                                const originalOpen = window.open;
+                                window.open = function(url, target, features) {
+                                    if (url && handleExternalNavigation(url, 'window.open')) {
+                                        return;
+                                    }
+                                    return originalOpen.apply(window, arguments);
+                                };
+
+                                // Intercept clicks on links and buttons
+                                document.addEventListener('click', function(e) {
+                                    const target = e.target;
+                                    
+                                    // Check if it's a link
+                                    const link = target.closest('a[href]');
+                                    if (link && link.href) {
+                                        if (isExternalUrl(link.href)) {
+                                            console.log('[VSDactyl Interceptor] External link click detected:', link.href);
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleExternalNavigation(link.href, 'link click');
+                                            return false;
+                                        }
+                                    }
+
+                                    // Check if it's a button with onclick or data handler
+                                    const button = target.closest('button');
+                                    if (button) {
+                                        // Check for onclick attribute
+                                        const onclick = button.getAttribute('onclick');
+                                        if (onclick && (onclick.includes('location') || onclick.includes('window.open'))) {
+                                            console.log('[VSDactyl Interceptor] Button with navigation onclick detected');
+                                        }
+                                    }
+                                }, true);
+
+                                // Hook fetch to detect redirects
+                                const originalFetch = window.fetch;
+                                window.fetch = function(...args) {
+                                    const url = args[0] instanceof Request ? args[0].url : args[0];
+                                    if (typeof url === 'string' && isExternalUrl(url)) {
+                                        console.log('[VSDactyl Interceptor] Fetch to external URL detected:', url);
+                                        window.parent.postMessage({
+                                            command: 'requestProxy',
+                                            url: url,
+                                            source: 'fetch'
+                                        }, '*');
+                                    }
+                                    return originalFetch.apply(window, args);
+                                };
+
+                                // Hook XMLHttpRequest
+                                const originalXHROpen = XMLHttpRequest.prototype.open;
+                                XMLHttpRequest.prototype.open = function(method, url) {
+                                    if (typeof url === 'string' && isExternalUrl(url)) {
+                                        console.log('[VSDactyl Interceptor] XHR to external URL detected:', url, 'method:', method);
+                                        window.parent.postMessage({
+                                            command: 'requestProxy',
+                                            url: url,
+                                            source: 'xhr'
+                                        }, '*');
+                                    }
+                                    return originalXHROpen.apply(this, arguments);
+                                };
+
+                                // Monitor for form submissions to external URLs
+                                document.addEventListener('submit', function(e) {
+                                    const form = e.target;
+                                    let action = form.action || window.location.href;
+                                    if (isExternalUrl(action)) {
+                                        console.log('[VSDactyl Interceptor] Form submission to external URL detected:', action);
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        handleExternalNavigation(action, 'form submission');
+                                        return false;
+                                    }
+                                }, true);
+
+                                console.log('[VSDactyl Interceptor] Navigation interceptor installed successfully');
+                            })();
+                        \`;
+                        
+                        doc.head.appendChild(script);
+                        console.log('[VSDactyl Debug] Injected navigation interceptor script');
+                    } catch (err) {
+                        console.warn('[VSDactyl Debug] Failed to inject navigation interceptor:', err?.message);
+                    }
+                }
+
 
                 // Listen for messages from both the iframe and the extension
                 window.addEventListener('message', (event) => {
@@ -915,7 +1402,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                     if (msg && msg.command === 'requestProxy' && msg.url) {
                         try {
                             console.log('[VSDactyl Debug] Forwarding proxy request to extension for:', msg.url);
-                            vscode.postMessage({ command: 'getProxyHost', url: msg.url });
+                            requestProxyForUrl(msg.url, 'iframe requestProxy message');
                             notice.innerHTML = '🔗 Requesting proxy for external authentication...';
                             notice.style.background = 'rgba(36, 232, 245, 0.2)';
                         } catch (e) {
@@ -939,6 +1426,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                             const u = new URL(target);
                             const proxied = msg.host + u.pathname + u.search + u.hash;
                             console.log('[VSDactyl Debug] Switching iframe to proxied auth URL:', proxied);
+                            lastRequestedProxyUrl = null;
                             frame.src = proxied;
                             notice.innerHTML = '🔗 Proxying external authentication...';
                             notice.style.background = 'rgba(36, 232, 245, 0.2)';
@@ -959,7 +1447,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                         const ssoPatterns = [
                             /oauth|openid|saml|sso|login\.microsoftonline|accounts\.google|auth0|okta|adfs/i,
                             /\/auth\/|\/login\/|\/account\/|\/signin\//i,
-                            /code=|id_token=|assertion=/i // OAuth/SAML response codes
+                            /code=|id_token=|assertion=|response_type=|redirect_uri=|client_id=/i // OAuth/SAML response codes and OIDC params
                         ];
                         
                         for (const pattern of ssoPatterns) {
@@ -980,10 +1468,41 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                     }
                     return false;
                 }
+
+                // If we can access the iframe DOM (same-origin), observe for password inputs/forms
+                function observeFrameForForms() {
+                    try {
+                        const doc = frame.contentDocument;
+                        if (!doc) return;
+
+                        const checkForAuthElements = () => {
+                            const pwd = doc.querySelector('input[type=password]');
+                            if (pwd) {
+                                try {
+                                    const form = pwd.closest('form');
+                                    const action = form ? (form.action || frame.contentWindow.location.href) : frame.contentWindow.location.href;
+                                    if (action && isExternalUrl(action)) {
+                                        requestProxyForUrl(action, 'detected password input');
+                                    }
+                                } catch (e) {
+                                    // ignore
+                                }
+                            }
+                        };
+
+                        const mo = new MutationObserver(() => checkForAuthElements());
+                        mo.observe(doc, { childList: true, subtree: true, attributes: true });
+                        // initial check
+                        checkForAuthElements();
+                    } catch (e) {
+                        // cross-origin or inaccessible
+                    }
+                }
                 
                 frame.onload = () => {
                     loaded = true;
-                    console.log('[VSDactyl Debug] Iframe loaded successfully.');
+                    console.log('[VSDactyl Debug] Iframe loaded successfully.', frame.src);
+                    startNavigationMonitor();
 
                     // Detect custom authentication systems
                     let pageUrl = frame.src;
@@ -995,6 +1514,9 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                         pageUrl = frame.src;
                     }
                     const isCustomAuthFlow = detectCustomAuthFlow(pageUrl);
+                    console.log('[VSDactyl Debug] Panel page URL:', pageUrl);
+                    console.log('[VSDactyl Debug] Auto-login enabled:', credentials.shouldAutoLogin);
+                    console.log('[VSDactyl Debug] Custom auth detected:', isCustomAuthFlow);
 
                     if (isCustomAuthFlow) {
                         notice.innerHTML = '🔐 Custom authentication detected. Preparing proxy...';
@@ -1004,7 +1526,15 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                         // Request the extension to provide a proxy host for this external auth domain
                         try {
-                            vscode.postMessage({ command: 'getProxyHost', url: pageUrl });
+                            requestProxyForUrl(pageUrl, 'custom auth detection');
+                            // Show fallback external browser button in case proxying fails
+                            const externalBtn = document.getElementById('external-auth');
+                            if (externalBtn) {
+                                externalBtn.style.display = 'inline-block';
+                                externalBtn.onclick = () => {
+                                    vscode.postMessage({ command: 'openExternal', url: pageUrl });
+                                };
+                            }
                         } catch (e) {
                             console.error('[VSDactyl Debug] Could not request proxy host:', e.message);
                         }
@@ -1017,12 +1547,19 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                         notice.style.display = 'none';
                     }
 
+                    // Inject navigation interceptor into iframe
+                    injectNavigationInterceptor();
+
                     // Inject right-click handler into iframe
                     setupPanelContextMenu();
+
+                    // Observe frame DOM for forms/password inputs if same-origin
+                    observeFrameForForms();
 
                     // Auto-fill credentials if available and enabled
                     if (credentials.username || credentials.password) {
                         try {
+                            console.log('[VSDactyl Debug] Attempting auto-fill login after iframe load');
                             setTimeout(() => autofillLogin(credentials), 500);
                         } catch (e) {
                             console.warn('[VSDactyl Debug] Could not auto-fill login:', e.message);
@@ -1040,6 +1577,7 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                     if (!loaded) {
                         console.warn('[VSDactyl Debug] Iframe took too long to load.');
                         notice.innerHTML = "<b>Timeout:</b> The panel is taking too long to respond.<br>Check VS Code Developer Tools.";
+                        console.warn('[VSDactyl Debug] Current iframe src at timeout:', frame.src);
                     }
                 }, 5000);
 
@@ -1111,6 +1649,18 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                             
                             if (fileRow && fileName && fileName.length > 0) {
                                 e.preventDefault();
+
+                                doc.addEventListener('click', (e) => {
+                                    try {
+                                        const target = e.target;
+                                        const anchor = target && target.closest ? target.closest('a[href]') : null;
+                                        if (anchor) {
+                                            console.log('[VSDactyl Debug] Clicked anchor:', anchor.href);
+                                        }
+                                    } catch (err) {
+                                        console.warn('[VSDactyl Debug] Failed to inspect click target:', err?.message);
+                                    }
+                                }, true);
                                 selectedFile = {
                                     name: fileName,
                                     element: fileRow,
@@ -1123,16 +1673,17 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                             } else {
                                 hideContextMenu();
                             }
+                                                        console.log('[VSDactyl Debug] External navigation detected, requesting proxy:', hrefUrl.href);
                         });
 
                         // Intercept clicks and form submissions to detect external auth navigations
                         doc.addEventListener('click', (e) => {
-                            try {
+                                                    console.warn('[VSDactyl Debug] Failed to parse anchor URL:', href, err?.message);
                                 const anchor = e.target.closest && e.target.closest('a[href]');
                                 if (anchor) {
                                     const href = anchor.href;
                                     if (href) {
-                                        try {
+                                        console.warn('[VSDactyl Debug] Click interception failed:', err?.message);
                                             const hrefUrl = new URL(href, location.href);
                                             if (hrefUrl.origin !== location.origin) {
                                                 // External navigation detected - request proxy from parent
@@ -1144,15 +1695,16 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                                         }
                                     }
                                 }
+                                                    console.log('[VSDactyl Debug] External form submission detected, requesting proxy:', actionUrl.href);
                             } catch (err) {
                                 // ignore
                             }
                         }, true);
-
+                                                console.warn('[VSDactyl Debug] Failed to parse form action URL:', action, err?.message);
                         doc.addEventListener('submit', (e) => {
                             try {
                                 const form = e.target;
-                                const action = (form && (form.action || frame.contentWindow.location.href)) || '';
+                                        console.warn('[VSDactyl Debug] Submit interception failed:', err?.message);
                                 if (action) {
                                     try {
                                         const actionUrl = new URL(action, location.href);
@@ -1243,7 +1795,20 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
 
                         const doc = frame.contentDocument;
                         if (!doc) {
-                            console.warn('[VSDactyl Debug] Cannot access iframe document');
+                            console.warn('[VSDactyl Debug] Cannot access iframe document (cross-origin).');
+                            // Request proxy for the current iframe src so authentication flows can be proxied
+                            try {
+                                requestProxyForUrl(frame.src || panelOrigin, 'autofill cross-origin');
+                                const externalBtn = document.getElementById('external-auth');
+                                if (externalBtn) {
+                                    externalBtn.style.display = 'inline-block';
+                                    externalBtn.onclick = () => {
+                                        vscode.postMessage({ command: 'openExternal', url: frame.src || panelOrigin });
+                                    };
+                                }
+                            } catch (e) {
+                                console.warn('[VSDactyl Debug] Failed to request proxy from autofill fallback:', e?.message);
+                            }
                             return;
                         }
 
@@ -1297,6 +1862,19 @@ async function openPanelWebView(item?: ServerTreeItem): Promise<void> {
                             console.log('[VSDactyl Debug] This appears to be a custom authentication system.');
                             console.log('[VSDactyl Debug] Please authenticate manually through the panel.');
                             console.warn('[VSDactyl Debug] Available inputs:', Array.from(inputs).map(i => ({ name: i.name, type: i.type, id: i.id })));
+                            // Offer a proxy/external fallback when autofill cannot locate fields
+                            try {
+                                requestProxyForUrl(frame.src || panelOrigin, 'autofill missing fields');
+                                const externalBtn = document.getElementById('external-auth');
+                                if (externalBtn) {
+                                    externalBtn.style.display = 'inline-block';
+                                    externalBtn.onclick = () => {
+                                        vscode.postMessage({ command: 'openExternal', url: frame.src || panelOrigin });
+                                    };
+                                }
+                            } catch (e) {
+                                // ignore
+                            }
                             return;
                         }
 
@@ -1435,6 +2013,7 @@ async function sendPowerSignal(item: ServerTreeItem | undefined, signal: 'start'
         vscode.window.showErrorMessage('Power actions are only available for panel-backed servers.');
         return;
     }
+        const panelOriginJson = JSON.stringify(new URL(item.account.panelUrl).origin);
 
     const actionName = signal.charAt(0).toUpperCase() + signal.slice(1);
 

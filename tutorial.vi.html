@@ -322,7 +322,7 @@
     <nav class="sidebar">
         <a href="#" class="brand">
             <span class="brand-icon">🦕</span>
-            <span class="brand-name">PTERO SFTP</span>
+            <span class="brand-name">VSDactyl</span>
         </a>
 
         <div class="nav-group-title">Bắt đầu</div>
@@ -348,7 +348,7 @@
 
     <div class="content">
         <header id="jump-start">
-            <div class="version-badge">Version 2.0.2 • Stable</div>
+            <div class="version-badge">Version 2.3.0 • Stable</div>
             <h1>Xin chào, <br>Cùng làm chủ VSDactyl nhé!</h1>
             <p class="hero-desc">Chào mừng bạn đến với thế giới quản lý Server nhẹ nhàng hơn. Extension này giúp bạn
                 chỉnh sửa code trực tiếp trên VS Code mà không cần thêm bất kỳ phần mềm nặng nề nào khác.</p>
@@ -422,15 +422,12 @@
         <section id="sftp-connect">
             <h2>Quản lý File như đang ở Local</h2>
             <div class="card">
-                <h3>Kết nối</h3>
-                <p>Sau khi xong bước thêm tài khoản, các Server của bạn sẽ hiện ra. Click chuột phải chọn
-                    <strong>Connect (SFTP)</strong>.</p>
-                <p>Lúc này, toàn bộ file trên server sẽ hiện ra trong trình Explorer của VS Code. Bạn có thể:</p>
-                <ul>
-                    <li>Chỉnh sửa code và <code>Ctrl + S</code> để lưu ngay lên Server.</li>
-                    <li>Kéo thả file từ máy tính vào để upload nhanh chóng.</li>
-                    <li>Đổi tên, xóa hoặc tạo file/folder mới dễ dàng.</li>
-                </ul>
+                <h3>Trình Duyệt File Đệ Quy ở Thanh Bên</h3>
+                <p>Bạn không cần phải mount thư mục workspace để duyệt hoặc chỉnh sửa các file từ xa nữa. Giờ đây bạn có thể mở rộng nút server trực tiếp bên trong thanh bên danh sách <strong>Servers</strong> của VS Code để duyệt các file và thư mục con. Nhấp vào bất kỳ file nào để mở trực tiếp trong trình soạn thảo, và nhấp chuột phải để tải xuống, xóa, nén hoặc giải nén các mục ngay lập tức.</p>
+            </div>
+            <div class="card">
+                <h3>Kết nối và Chỉnh sửa (Explorer Truyền Thống)</h3>
+                <p>Nhấp chuột phải vào server và chọn <strong>Connect (SFTP)</strong>. Sau đó bạn có thể mount server như một workspace, chỉnh sửa file, lưu trực tiếp lên server, kéo thả upload và quản lý các thư mục từ trình duyệt file Explorer mặc định của VS Code.</p>
             </div>
         </section>
 
@@ -450,6 +447,10 @@
                 <h3>Tải lên siêu tốc</h3>
                 <p>Chỉ cần kéo và thả một thư mục khổng lồ trực tiếp vào biểu tượng server. VSDactyl sẽ tự động nén thư mục thành một file Archive duy nhất, truyền nó qua SFTP và lập tức giải nén ngay trên server đích!</p>
                 <div class="tip-box"><strong>Mẹo:</strong> Bạn có thể theo dõi tốc độ truyền, cài đặt giới hạn tốc độ và xem thời gian dự kiến (ETA) trực tiếp từ <strong>Transfer Manager Dashboard</strong> thông qua nút Sync ở góc trên cùng của Server View!</div>
+            </div>
+            <div class="card">
+                <h3>Quản Lý Archive Trực Tiếp Trên Server</h3>
+                <p>Bạn có thể đóng gói thư mục hoặc giải nén các file archive trực tiếp trên server mà không cần truyền tải dữ liệu qua mạng. Nhấp chuột phải vào thư mục ở thanh bên và chọn <strong>Compress to Archive (Server-side)</strong> để nén chúng lại dưới dạng zip/tar, hoặc nhấp chuột phải vào bất kỳ file archive zip/tar nào và chọn <strong>Decompress Archive (Server-side)</strong> để giải nén ngay lập tức thông qua Wings API.</p>
             </div>
         </section>
 

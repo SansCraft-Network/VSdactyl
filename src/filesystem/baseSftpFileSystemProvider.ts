@@ -17,6 +17,12 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
     readonly onDidChangeFile = this._onDidChangeFile.event;
 
     protected connections: Map<string, T> = new Map();
+    protected transferOrchestrator?: any;
+    protected static hasShownLargeFileWarning = false;
+
+    public setOrchestrator(orchestrator: any) {
+        this.transferOrchestrator = orchestrator;
+    }
 
     constructor(protected readonly syncStatusReporter?: SyncStatusReporter) {}
 
@@ -140,14 +146,86 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
         const client = this.getClient(uri);
         this.syncStatusReporter?.beginSync(uri);
 
+        const sizeThresholdBytes = 10 * 1024 * 1024; // 10 MB
+        if (content.length > sizeThresholdBytes && !BaseSftpFileSystemProvider.hasShownLargeFileWarning) {
+            BaseSftpFileSystemProvider.hasShownLargeFileWarning = true;
+            vscode.window.showInformationMessage(
+                `Uploading large file (${(content.length / (1024 * 1024)).toFixed(1)} MB) via native File Explorer. For faster, compressed uploads and full progress tracking, try dragging files directly into the VSDactyl Server Tree View!`,
+                'Got it'
+            );
+        }
+
+        let session: any;
+        let transferManager: any;
+        if (this.transferOrchestrator && content.length > 1024 * 1024) { // Only track in TransferManager if > 1MB
+            const conn = this.getConnection(uri.authority);
+            if (conn) {
+                const path = require('path');
+                transferManager = this.transferOrchestrator['sessions'];
+                session = transferManager.registerSession({
+                    id: `write_${Date.now()}`,
+                    type: 'upload',
+                    serverIdentifier: conn.identifier,
+                    title: `Upload ${path.basename(filePath)}`,
+                    mode: 'single',
+                    fileCountTotal: 1,
+                    fileCountCompleted: 0,
+                    bytesTotal: content.length,
+                    bytesTransferred: 0,
+                    status: 'running',
+                    children: [{
+                        id: `write_child_${Date.now()}`,
+                        label: `Upload ${filePath}`,
+                        sourcePath: 'VS Code Editor/Explorer',
+                        targetPath: filePath,
+                        bytesTotal: content.length,
+                        bytesTransferred: 0,
+                        status: 'running'
+                    }],
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                });
+            }
+        }
+
         try {
-            await client.writeFile(filePath, Buffer.from(content));
+            if (session && transferManager) {
+                const sftpClient = this.getClient(uri);
+                const remoteStream = await sftpClient.writeFileStream(filePath);
+                const stream = require('stream');
+                const bufferStream = new stream.Readable();
+                bufferStream.push(content);
+                bufferStream.push(null); // End of stream
+
+                let transferred = 0;
+                await new Promise<void>((resolve, reject) => {
+                    bufferStream.on('data', (chunk: Buffer) => {
+                        transferred += chunk.length;
+                        transferManager.updateChildProgress(session.id, session.children[0].id, transferred);
+                    });
+                    bufferStream.on('error', reject);
+                    remoteStream.on('error', (err: any) => {
+                        reject(err);
+                    });
+                    remoteStream.on('close', () => {
+                        resolve();
+                    });
+                    bufferStream.pipe(remoteStream);
+                });
+                transferManager.completeChild(session.id, session.children[0].id, true);
+            } else {
+                await client.writeFile(filePath, Buffer.from(content));
+            }
+
             this._onDidChangeFile.fire([{
                 type: vscode.FileChangeType.Changed,
                 uri,
             }]);
             this.syncStatusReporter?.completeSync(uri);
         } catch (err: any) {
+            if (session && transferManager) {
+                transferManager.completeChild(session.id, session.children[0].id, false, err.message);
+            }
             this.syncStatusReporter?.failSync(uri);
             throw vscode.FileSystemError.Unavailable(`Failed to write file: ${err.message}`);
         }
@@ -179,6 +257,68 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
         const isSameRemoteConnection = oldUri.scheme === newUri.scheme && oldUri.authority === newUri.authority;
+        if (isSameRemoteConnection && this.transferOrchestrator) {
+            const conn = this.getConnection(oldUri.authority);
+            if (conn) {
+                const sftpClient = conn.sftpClient;
+                const oldPath = this.getFilePath(oldUri);
+                const newPath = this.getFilePath(newUri);
+                const path = require('path');
+
+                const transferManager = this.transferOrchestrator['sessions'];
+                const session = transferManager.registerSession({
+                    id: `move_${Date.now()}`,
+                    type: 'upload',
+                    serverIdentifier: conn.identifier,
+                    title: `Move ${path.basename(oldPath)}`,
+                    mode: 'single',
+                    fileCountTotal: 1,
+                    fileCountCompleted: 0,
+                    bytesTotal: 0,
+                    bytesTransferred: 0,
+                    status: 'running',
+                    children: [{
+                        id: `move_child_${Date.now()}`,
+                        label: `Move ${oldPath} -> ${newPath}`,
+                        sourcePath: oldPath,
+                        targetPath: newPath,
+                        bytesTotal: 0,
+                        bytesTransferred: 0,
+                        status: 'pending'
+                    }],
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                });
+
+                this.syncStatusReporter?.beginSync(oldUri);
+                this.syncStatusReporter?.beginSync(newUri);
+                try {
+                    transferManager.updateChildStatus(session.id, session.children[0].id, 'running');
+                    await sftpClient.rename(oldPath, newPath, { overwrite: options.overwrite });
+                    transferManager.completeChild(session.id, session.children[0].id, true);
+
+                    this._onDidChangeFile.fire([
+                        { type: vscode.FileChangeType.Deleted, uri: oldUri },
+                        { type: vscode.FileChangeType.Created, uri: newUri },
+                    ]);
+                    this.syncStatusReporter?.completeSync(oldUri);
+                    this.syncStatusReporter?.completeSync(newUri);
+                    return;
+                } catch (err: any) {
+                    transferManager.completeChild(session.id, session.children[0].id, false, err.message);
+                    this.syncStatusReporter?.failSync(oldUri);
+                    this.syncStatusReporter?.failSync(newUri);
+                    if (BaseSftpFileSystemProvider.isRemoteNotFound(err)) {
+                        throw vscode.FileSystemError.FileNotFound(oldUri);
+                    }
+                    if (BaseSftpFileSystemProvider.isFileExists(err)) {
+                        throw vscode.FileSystemError.FileExists(newUri);
+                    }
+                    throw vscode.FileSystemError.Unavailable(`Failed to rename: ${err.message}`);
+                }
+            }
+        }
+
         if (!isSameRemoteConnection) {
             this.syncStatusReporter?.beginSync(oldUri);
             this.syncStatusReporter?.beginSync(newUri);
@@ -253,6 +393,161 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
     }
 
     async copy(source: vscode.Uri, destination: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+        const isSourceRemote = source.scheme === 'ptero' || source.scheme === 'sftp';
+        const isDestRemote = destination.scheme === 'ptero' || destination.scheme === 'sftp';
+
+        if (this.transferOrchestrator && !isSourceRemote && isDestRemote) {
+            const conn = this.getConnection(destination.authority);
+            if (conn) {
+                const sftpClient = conn.sftpClient;
+                const remoteDestinationPath = this.getFilePath(destination);
+
+                const path = require('path');
+                const fs = require('fs');
+                const os = require('os');
+                
+                const sourceBase = path.basename(source.fsPath || source.path);
+                const destBase = path.basename(remoteDestinationPath);
+                
+                let localUriToUpload = source;
+                let tempDir: string | undefined;
+                
+                if (sourceBase !== destBase) {
+                    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vsdactyl_upload_'));
+                    const tempFilePath = path.join(tempDir, destBase);
+                    
+                    const stat = await vscode.workspace.fs.stat(source);
+                    if (stat.type === vscode.FileType.Directory) {
+                        const copyFolder = async (src: string, dest: string) => {
+                            fs.mkdirSync(dest, { recursive: true });
+                            const entries = fs.readdirSync(src, { withFileTypes: true });
+                            for (const entry of entries) {
+                                const s = path.join(src, entry.name);
+                                const d = path.join(dest, entry.name);
+                                if (entry.isDirectory()) {
+                                    await copyFolder(s, d);
+                                } else {
+                                    fs.copyFileSync(s, d);
+                                }
+                            }
+                        };
+                        await copyFolder(source.fsPath, tempFilePath);
+                    } else {
+                        fs.copyFileSync(source.fsPath, tempFilePath);
+                    }
+                    localUriToUpload = vscode.Uri.file(tempFilePath);
+                }
+                
+                try {
+                    await this.transferOrchestrator.upload({
+                        localUris: [localUriToUpload],
+                        remoteDestinationPath: path.posix.dirname(remoteDestinationPath),
+                        sftpClient,
+                        serverIdentifier: conn.identifier,
+                        pteroClient: (conn as any).account?.type === 'pterodactyl' ? new (require('../api/pterodactylClient').PterodactylClient)((conn as any).account.panelUrl, (conn as any).account.apiKey || '') : undefined
+                    });
+                } finally {
+                    if (tempDir) {
+                        try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ }
+                    }
+                }
+                return;
+            }
+        }
+
+        if (this.transferOrchestrator && isSourceRemote && isDestRemote) {
+            const isSameConnection = source.scheme === destination.scheme && source.authority === destination.authority;
+            if (!isSameConnection) {
+                const fileSystemProvider = require('../extension').fileSystemProvider;
+                const sftpFileSystemProvider = require('../extension').sftpFileSystemProvider;
+                
+                const sourceConn = source.scheme === 'ptero' ? fileSystemProvider.getConnection(source.authority) : sftpFileSystemProvider.getConnection(source.authority);
+                const destConn = destination.scheme === 'ptero' ? fileSystemProvider.getConnection(destination.authority) : sftpFileSystemProvider.getConnection(destination.authority);
+                
+                if (sourceConn && destConn) {
+                    const sourcePath = this.getFilePath(source);
+                    const destPath = this.getFilePath(destination);
+                    const path = require('path');
+                    const fs = require('fs');
+                    const os = require('os');
+                    
+                    const base = path.basename(destPath);
+                    const tempFile = path.join(os.tmpdir(), `vsdactyl_transfer_${Date.now()}_${base}`);
+                    
+                    const transferManager = this.transferOrchestrator['sessions'];
+                    const session = transferManager.registerSession({
+                        id: `transfer_${Date.now()}`,
+                        type: 'upload',
+                        serverIdentifier: destConn.identifier,
+                        title: `Transfer ${base}`,
+                        mode: 'single',
+                        fileCountTotal: 1,
+                        fileCountCompleted: 0,
+                        bytesTotal: 0,
+                        bytesTransferred: 0,
+                        status: 'running',
+                        children: [{
+                            id: `transfer_child_${Date.now()}`,
+                            label: `${base} (${sourceConn.identifier} -> ${destConn.identifier})`,
+                            sourcePath: sourcePath,
+                            targetPath: destPath,
+                            bytesTotal: 0,
+                            bytesTransferred: 0,
+                            status: 'pending'
+                        }],
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                    });
+                    
+                    try {
+                        const child = session.children[0];
+                        transferManager.updateChildStatus(session.id, child.id, 'running');
+                        
+                        const stat = await sourceConn.sftpClient.stat(sourcePath);
+                        child.bytesTotal = stat.size;
+                        session.bytesTotal = stat.size;
+                        transferManager.upsertSession(session);
+                        
+                        const remoteStream = await sourceConn.sftpClient.readFileStream(sourcePath);
+                        const localStream = fs.createWriteStream(tempFile);
+                        await new Promise<void>((resolve, reject) => {
+                            let bytesDownloaded = 0;
+                            remoteStream.on('data', (chunk: any) => {
+                                bytesDownloaded += chunk.length;
+                                transferManager.updateChildProgress(session.id, child.id, Math.floor(bytesDownloaded / 2));
+                            });
+                            remoteStream.on('error', reject);
+                            localStream.on('error', reject);
+                            localStream.on('close', resolve);
+                            remoteStream.pipe(localStream);
+                        });
+                        
+                        const localReadStream = fs.createReadStream(tempFile);
+                        const remoteWriteStream = await destConn.sftpClient.writeFileStream(destPath);
+                        await new Promise<void>((resolve, reject) => {
+                            let bytesUploaded = 0;
+                            localReadStream.on('data', (chunk: any) => {
+                                bytesUploaded += chunk.length;
+                                transferManager.updateChildProgress(session.id, child.id, Math.floor(stat.size / 2) + Math.floor(bytesUploaded / 2));
+                            });
+                            localReadStream.on('error', reject);
+                            remoteWriteStream.on('error', reject);
+                            remoteWriteStream.on('close', resolve);
+                            localReadStream.pipe(remoteWriteStream);
+                        });
+                        
+                        transferManager.completeChild(session.id, child.id, true);
+                    } catch (err: any) {
+                        transferManager.completeChild(session.id, session.children[0].id, false, err.message || err);
+                        throw err;
+                    } finally {
+                        try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
+                    }
+                    return;
+                }
+            }
+        }
+
         this.syncStatusReporter?.beginSync(destination);
 
         try {

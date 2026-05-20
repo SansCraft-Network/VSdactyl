@@ -5,7 +5,6 @@ import * as os from 'os';
 import * as path from 'path';
 import { Client, SFTPWrapper, ConnectConfig } from 'ssh2';
 import { Logger } from '../utils/logger';
-import { TransferManager } from '../transfers/transferManager';
 
 // helper to map local log calls to Logger
 function log(message: string): void {
@@ -414,6 +413,37 @@ export class SftpClient {
         return normalized || '/';
     }
 
+    async exec(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+        if (!this.client) {
+            throw new Error('SSH client is not connected');
+        }
+
+        return new Promise((resolve, reject) => {
+            this.client!.exec(command, (err, stream) => {
+                if (err) {
+                    reject(new Error(`Failed to execute remote command: ${err.message}`));
+                    return;
+                }
+
+                let stdout = '';
+                let stderr = '';
+
+                stream.on('data', (chunk: string | Buffer) => {
+                    stdout += chunk.toString();
+                });
+                stream.stderr.on('data', (chunk: string | Buffer) => {
+                    stderr += chunk.toString();
+                });
+                stream.on('close', (code: number | null) => {
+                    resolve({ stdout, stderr, exitCode: code ?? 0 });
+                });
+                stream.on('error', (streamError: Error) => {
+                    reject(new Error(`Remote command stream failed: ${streamError.message}`));
+                });
+            });
+        });
+    }
+
     private async pathKind(remotePath: string): Promise<'dir' | 'file' | 'missing'> {
         const sftp = await this.ensureConnected();
         return new Promise((resolve, reject) => {
@@ -534,116 +564,38 @@ export class SftpClient {
         });
     }
 
-    async readFile(filePath: string): Promise<Buffer> {
+    async readFileStream(filePath: string): Promise<import('stream').Readable> {
         const sftp = await this.ensureConnected();
-        log(`READ ${filePath}`);
-        
-        let statSize = 0;
-        try { const s = await this.stat(filePath); statSize = s.size; } catch { /* ignore */ }
-        const tm = TransferManager.getInstanceUnsafe();
-        const active = tm?.registerSingleTransfer('download', this.connectionInfo.host, path.basename(filePath), statSize);
-        
-        return new Promise((resolve, reject) => {
-            const chunks: Buffer[] = [];
-            const stream = sftp.createReadStream(filePath);
-            let readBytes = 0;
-
-            if (active) {
-                active.cancel = () => {
-                    stream.destroy();
-                    tm.completeTransfer(active.id, false, 'Cancelled by user');
-                    reject(new Error('Transfer cancelled by user'));
-                };
-            }
-
-            stream.on('data', (chunk: Buffer) => {
-                if (active && active.status === 'cancelled') return;
-                chunks.push(chunk);
-                readBytes += chunk.length;
-                if (active) tm.updateTransferProgress(active.id, readBytes);
-            });
-
-            stream.on('end', () => {
-                const buf = Buffer.concat(chunks);
-                log(`  ✅ Read ${buf.length} bytes`);
-                if (active) tm.completeTransfer(active.id, true);
-                resolve(buf);
-            });
-
-            stream.on('error', (err: Error) => {
-                if (err.message === 'no such file') {
-                    log(`  ℹ️ READ ${filePath}: no such file`);
-                } else {
-                    log(`  ❌ READ failed: ${err.message}`);
-                }
-                if (active) tm.completeTransfer(active.id, false, err.message);
-                reject(new Error(`Failed to read ${filePath}: ${err.message}`));
-            });
-        });
+        return sftp.createReadStream(filePath);
     }
 
-    async getWriteStream(filePath: string): Promise<import('stream').Writable> {
+    async writeFileStream(filePath: string): Promise<import('stream').Writable> {
         const sftp = await this.ensureConnected();
         return sftp.createWriteStream(filePath);
     }
 
-    async writeFile(filePath: string, data: Buffer): Promise<void> {
-        const sftp = await this.ensureConnected();
-        log(`WRITE ${filePath} (${data.length} bytes)`);
-        
-        const tm = TransferManager.getInstanceUnsafe();
-        const active = tm?.registerSingleTransfer('upload', this.connectionInfo.host, path.basename(filePath), data.length);
-        
+    async readFile(filePath: string): Promise<Buffer> {
+        const stream = await this.readFileStream(filePath);
         return new Promise((resolve, reject) => {
-            const stream = sftp.createWriteStream(filePath);
-            let written = 0;
-
-            if (active) {
-                active.cancel = () => {
-                    stream.destroy();
-                    tm.completeTransfer(active.id, false, 'Cancelled by user');
-                    reject(new Error('Transfer cancelled by user'));
-                };
-            }
-
-            stream.on('close', () => {
-                log(`  ✅ Written`);
-                if (active) tm.completeTransfer(active.id, true);
-                resolve();
+            const chunks: Buffer[] = [];
+            stream.on('data', (chunk: string | Buffer) => {
+                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
             });
+            stream.on('error', (err: Error) => reject(new Error(`Failed to read ${filePath}: ${err.message}`)));
+            stream.on('end', () => resolve(Buffer.concat(chunks)));
+        });
+    }
 
-            stream.on('error', (err: Error) => {
-                log(`  ❌ WRITE failed: ${err.message}`);
-                if (active) tm.completeTransfer(active.id, false, err.message);
-                reject(new Error(`Failed to write ${filePath}: ${err.message}`));
-            });
+    async getWriteStream(filePath: string): Promise<import('stream').Writable> {
+        return this.writeFileStream(filePath);
+    }
 
-            const chunkSize = 64 * 1024;
-            let offset = 0;
-
-            const writeNextChunk = () => {
-                if (active && active.status === 'cancelled') return;
-                
-                if (offset >= data.length) {
-                    stream.end();
-                    return;
-                }
-
-                const end = Math.min(offset + chunkSize, data.length);
-                const chunk = data.subarray(offset, end);
-                offset = end;
-                written += chunk.length;
-                
-                if (active) tm.updateTransferProgress(active.id, written);
-
-                if (!stream.write(chunk)) {
-                    stream.once('drain', writeNextChunk);
-                } else {
-                    process.nextTick(writeNextChunk);
-                }
-            };
-            
-            writeNextChunk();
+    async writeFile(filePath: string, data: Buffer): Promise<void> {
+        const stream = await this.writeFileStream(filePath);
+        return new Promise((resolve, reject) => {
+            stream.on('error', (err: Error) => reject(new Error(`Failed to write ${filePath}: ${err.message}`)));
+            stream.on('close', resolve);
+            stream.end(data);
         });
     }
 

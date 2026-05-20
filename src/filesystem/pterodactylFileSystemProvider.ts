@@ -127,4 +127,113 @@ export class PterodactylFileSystemProvider extends BaseSftpFileSystemProvider<Se
         // Fallback to SFTP
         return super.delete(uri, options);
     }
+
+    async createDirectory(uri: vscode.Uri): Promise<void> {
+        const identifier = uri.authority;
+        const conn = this.connections.get(identifier);
+
+        if (conn && conn.account.type === 'pterodactyl') {
+            const filePath = this.getFilePath(uri);
+            const parts = filePath.split('/');
+            const name = parts.pop() || '';
+            const root = parts.join('/') || '/';
+
+            this.syncStatusReporter?.beginSync(uri);
+            try {
+                const client = new PterodactylClient(conn.account.panelUrl, conn.account.apiKey || '');
+                await client.createFolder(conn.serverIdentifier, root, name);
+                this._onDidChangeFile.fire([{
+                    type: vscode.FileChangeType.Created,
+                    uri,
+                }]);
+                this.syncStatusReporter?.completeSync(uri);
+                return;
+            } catch (err: any) {
+                this.syncStatusReporter?.failSync(uri);
+                throw vscode.FileSystemError.Unavailable(`API Create Directory Failed: ${err.message}`);
+            }
+        }
+
+        return super.createDirectory(uri);
+    }
+
+    async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+        const isSameRemoteConnection = oldUri.scheme === newUri.scheme && oldUri.authority === newUri.authority;
+        if (!isSameRemoteConnection) {
+            return super.rename(oldUri, newUri, options);
+        }
+
+        const identifier = oldUri.authority;
+        const conn = this.connections.get(identifier);
+
+        if (conn && conn.account.type === 'pterodactyl') {
+            const oldPath = this.getFilePath(oldUri);
+            const newPath = this.getFilePath(newUri);
+            const from = oldPath.startsWith('/') ? oldPath.substring(1) : oldPath;
+            const to = newPath.startsWith('/') ? newPath.substring(1) : newPath;
+
+            this.syncStatusReporter?.beginSync(oldUri);
+            this.syncStatusReporter?.beginSync(newUri);
+
+            let session: any;
+            let transferManager: any;
+            if (this.transferOrchestrator) {
+                const path = require('path');
+                transferManager = this.transferOrchestrator['sessions'];
+                session = transferManager.registerSession({
+                    id: `move_${Date.now()}`,
+                    type: 'upload',
+                    serverIdentifier: conn.identifier,
+                    title: `Move ${path.basename(oldPath)}`,
+                    mode: 'single',
+                    fileCountTotal: 1,
+                    fileCountCompleted: 0,
+                    bytesTotal: 0,
+                    bytesTransferred: 0,
+                    status: 'running',
+                    children: [{
+                        id: `move_child_${Date.now()}`,
+                        label: `Move ${oldPath} -> ${newPath}`,
+                        sourcePath: oldPath,
+                        targetPath: newPath,
+                        bytesTotal: 0,
+                        bytesTransferred: 0,
+                        status: 'pending'
+                    }],
+                    createdAt: Date.now(),
+                    updatedAt: Date.now()
+                });
+            }
+
+            try {
+                if (session && transferManager) {
+                    transferManager.updateChildStatus(session.id, session.children[0].id, 'running');
+                }
+
+                const client = new PterodactylClient(conn.account.panelUrl, conn.account.apiKey || '');
+                await client.renameFile(conn.serverIdentifier, '/', from, to);
+
+                if (session && transferManager) {
+                    transferManager.completeChild(session.id, session.children[0].id, true);
+                }
+
+                this._onDidChangeFile.fire([
+                    { type: vscode.FileChangeType.Deleted, uri: oldUri },
+                    { type: vscode.FileChangeType.Created, uri: newUri },
+                ]);
+                this.syncStatusReporter?.completeSync(oldUri);
+                this.syncStatusReporter?.completeSync(newUri);
+                return;
+            } catch (err: any) {
+                if (session && transferManager) {
+                    transferManager.completeChild(session.id, session.children[0].id, false, err.message);
+                }
+                this.syncStatusReporter?.failSync(oldUri);
+                this.syncStatusReporter?.failSync(newUri);
+                throw vscode.FileSystemError.Unavailable(`API Rename Failed: ${err.message}`);
+            }
+        }
+
+        return super.rename(oldUri, newUri, options);
+    }
 }

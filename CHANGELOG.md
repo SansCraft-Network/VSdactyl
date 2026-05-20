@@ -1,8 +1,19 @@
+## [2.3.0-vsdactyl] - 2026-05-19
+
+### 🚀 Major Features
+- **Extension-Managed Server File Tree**: Explore and expand your remote directories recursively directly inside the VSDactyl **Servers** sidebar tree view without mounting workspaces.
+- **Wings-Accelerated Archive Operations**: Perform high-speed file compression and decompression directly on the server host utilizing the Pterodactyl client API, bypassing slow network download/upload loops.
+- **Refined Drag-and-Drop Routing**: Intelligently routes file drops—local files trigger uploads to the destination folder, same-server files invoke in-place renames, and cross-server files stream directly through a secure local buffer.
+- **Improved Context Menus & UI Targeting**: Pre-populates remote folders/files when starting download/upload workflows, and provides specialized right-click controls for remote folders and files.
+
 ## [2.2.14-vsdactyl] - 2026-05-18
-### ?? Release
+
+### 🐛 Bug Fixes
 - Proxy external authentication domains for billing/OAuth flows to prevent blank pages.
 - Intercept external clicks and form submissions to route through local proxy when needed.
-- Improve detection and guidance for custom authentication systems.## [2.2.13-vsdactyl] - 2026-05-18
+- Improve detection and guidance for custom authentication systems.
+
+## [2.2.13-vsdactyl] - 2026-05-18
 ### ?? Custom Authentication System Support
 - **Manual Authentication Flow**: Users can now disable auto-login to authenticate through custom systems (OAuth, SSO, billing, etc.)
 - **Smart Auth Detection**: Extension automatically detects common SSO/OAuth patterns and shows appropriate guidance

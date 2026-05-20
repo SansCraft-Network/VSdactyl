@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import { AccountManager } from '../accounts/accountManager';
 import { PterodactylClient, PterodactylAccount, PteroAccount, PteroServer } from '../api/pterodactylClient';
+import { SftpOnlyAccount } from '../accounts/types';
+import { Logger } from '../utils/logger';
 
-export type TreeNodeType = 'account' | 'server' | 'serverInfo' | 'loading' | 'error' | 'empty';
+export type TreeNodeType = 'account' | 'server' | 'serverInfo' | 'systemInfo' | 'folder' | 'file' | 'loading' | 'error' | 'empty';
 
 export class ServerTreeItem extends vscode.TreeItem {
+    public path?: string;
+
     constructor(
         public readonly label: string,
         public readonly nodeType: TreeNodeType,
@@ -84,11 +88,34 @@ export class ServerTreeItem extends vscode.TreeItem {
                     this.description = parts.join(' | ');
                 }
                 this.tooltip = this.buildServerTooltip();
-                this.command = {
-                    command: 'pterodactyl.connectServer',
-                    title: 'Connect to Server',
-                    arguments: [this],
-                };
+                // Omit automatic click command for server nodes since they are now expandable folders containing files.
+                // Right-click context actions will still let users manually connect/mount.
+                break;
+
+            case 'systemInfo':
+                this.iconPath = new vscode.ThemeIcon('dashboard');
+                this.contextValue = 'systemInfo';
+                break;
+
+            case 'folder':
+                this.iconPath = vscode.ThemeIcon.Folder;
+                this.contextValue = this.account?.type === 'pterodactyl' ? 'folder-ptero' : 'folder-sftp';
+                break;
+
+            case 'file':
+                this.iconPath = vscode.ThemeIcon.File;
+                this.contextValue = this.account?.type === 'pterodactyl' ? 'file-ptero' : 'file-sftp';
+                if (this.account && this.path) {
+                    const scheme = this.account.type === 'pterodactyl' ? 'ptero' : 'sftp';
+                    const authority = this.account.type === 'pterodactyl' ? this.server?.identifier : this.account.id;
+                    if (authority) {
+                        this.command = {
+                            command: 'vscode.open',
+                            title: 'Open File',
+                            arguments: [vscode.Uri.parse(`${scheme}://${authority}${this.path}`)],
+                        };
+                    }
+                }
                 break;
 
             case 'serverInfo':
@@ -99,11 +126,8 @@ export class ServerTreeItem extends vscode.TreeItem {
                 this.iconPath = new vscode.ThemeIcon('loading~spin');
                 break;
 
+            case 'error':
                 this.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('errorForeground'));
-                break;
-
-            case 'serverInfo':
-                // Handled in creation
                 break;
 
             case 'empty':
@@ -210,6 +234,15 @@ export class ServerTreeDragAndDropController implements vscode.TreeDragAndDropCo
 
             if (item.nodeType === 'account' && item.account?.type === 'sftpOnly') {
                 uris.push(vscode.Uri.parse(`sftp://${item.account.id}/`));
+                continue;
+            }
+
+            if ((item.nodeType === 'folder' || item.nodeType === 'file') && item.account && item.path) {
+                const scheme = item.account.type === 'pterodactyl' ? 'ptero' : 'sftp';
+                const authority = item.account.type === 'pterodactyl' ? item.server?.identifier : item.account.id;
+                if (authority) {
+                    uris.push(vscode.Uri.parse(`${scheme}://${authority}${item.path}`));
+                }
             }
         }
 
@@ -222,24 +255,71 @@ export class ServerTreeDragAndDropController implements vscode.TreeDragAndDropCo
     }
 
     async handleDrop(target: ServerTreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
-        if (!target || !target.server || !target.account) {
+        if (!target || !target.account) {
             return;
         }
 
+        const isTargetPtero = target.account.type === 'pterodactyl';
+        const targetServerId = isTargetPtero ? target.server?.identifier : target.account.id;
+        if (!targetServerId) {
+            return;
+        }
+
+        const rawUris: string[] = [];
+
+        // 1. Try to extract from text/uri-list
         const filesItem = dataTransfer.get('text/uri-list');
-        if (!filesItem) {
+        if (filesItem) {
+            const uriList = await filesItem.asString();
+            rawUris.push(...uriList.split('\r\n').map(s => s.trim()).filter(Boolean));
+        }
+
+        // 2. Try to extract from iterator (for OS drag and drop)
+        if (typeof (dataTransfer as any)[Symbol.iterator] === 'function') {
+            for (const [mimeType, item] of dataTransfer) {
+                const file = item.asFile();
+                if (file && file.uri) {
+                    rawUris.push(file.uri.toString());
+                }
+            }
+        }
+
+        if (rawUris.length === 0) {
             return;
         }
 
-        const uriList = await filesItem.asString();
-        const uris = uriList.split('\r\n')
-            .filter(s => s.trim() && s.startsWith('file://'))
-            .map(s => vscode.Uri.parse(s));
+        const fileUris: vscode.Uri[] = [];
+        const remoteSameUris: vscode.Uri[] = [];
+        const remoteDiffUris: vscode.Uri[] = [];
 
-        if (uris.length === 0) return;
+        for (const rawUri of rawUris) {
+            try {
+                const uri = vscode.Uri.parse(rawUri);
+                if (uri.scheme === 'file') {
+                    fileUris.push(uri);
+                } else if (uri.scheme === 'ptero' || uri.scheme === 'sftp') {
+                    if (uri.path === '/' || uri.path === '') {
+                        continue;
+                    }
+                    if (uri.authority === targetServerId) {
+                        remoteSameUris.push(uri);
+                    } else {
+                        remoteDiffUris.push(uri);
+                    }
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
 
-        if (target.account.type === 'pterodactyl') {
-            vscode.commands.executeCommand('pterodactyl.uploadToNode', target, uris);
+        if (fileUris.length > 0) {
+            vscode.commands.executeCommand('pterodactyl.uploadToNode', target, fileUris);
+        }
+        if (remoteSameUris.length > 0) {
+            vscode.commands.executeCommand('pterodactyl.moveOnNode', target, remoteSameUris);
+        }
+        if (remoteDiffUris.length > 0) {
+            vscode.commands.executeCommand('pterodactyl.transferBetweenServers', target, remoteDiffUris);
         }
     }
 }
@@ -249,8 +329,18 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
     private serverCache: Map<string, PteroServer[]> = new Map();
+    private cacheTimestamps: Map<string, number> = new Map();
+    private expandedServers: Map<string, { element: ServerTreeItem, timer?: NodeJS.Timeout }> = new Map();
     private loadingAccounts: Set<string> = new Set();
     private errorAccounts: Map<string, string> = new Map();
+
+    private fileSystemProvider?: any;
+    private sftpFileSystemProvider?: any;
+
+    public setFileSystemProviders(fileSystemProvider: any, sftpFileSystemProvider: any): void {
+        this.fileSystemProvider = fileSystemProvider;
+        this.sftpFileSystemProvider = sftpFileSystemProvider;
+    }
 
     constructor(private accountManager: AccountManager) {
         accountManager.onDidChangeAccounts(() => {
@@ -300,12 +390,108 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
             ];
         }
 
-        // Server children: show info details
-        if (element.nodeType === 'server' && element.server) {
+        // Server children: show System Information node and root files/directories
+        if (element.nodeType === 'server' && element.server && element.account) {
+            const items: ServerTreeItem[] = [];
+            items.push(
+                new ServerTreeItem('System Information', 'systemInfo', vscode.TreeItemCollapsibleState.Collapsed, element.account, element.server)
+            );
+            try {
+                const files = await this.fetchFiles(element.account, element.server, '/');
+                items.push(...files);
+            } catch (e: any) {
+                Logger.error(`Failed to fetch root files for server ${element.server.identifier}`, e);
+                items.push(new ServerTreeItem(`Error loading files: ${e.message}`, 'error', vscode.TreeItemCollapsibleState.None));
+            }
+            return items;
+        }
+
+        // System Info children: show live usage details
+        if (element.nodeType === 'systemInfo' && element.server) {
             return this.getServerInfoItems(element.server);
         }
 
+        // Folder children: show subfolders and files
+        if (element.nodeType === 'folder' && element.account && element.path) {
+            return this.fetchFiles(element.account, element.server, element.path);
+        }
+
         return [];
+    }
+
+    private async fetchFiles(account: PteroAccount, server: PteroServer | undefined, path: string): Promise<ServerTreeItem[]> {
+        if (account.type === 'pterodactyl') {
+            if (!server) return [];
+            try {
+                const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
+                const files = await client.listFiles(server.uuid, path);
+                if (files.length === 0) {
+                    return [new ServerTreeItem('Empty folder', 'empty', vscode.TreeItemCollapsibleState.None)];
+                }
+                // Sort: folders first, then files alphabetically
+                files.sort((a, b) => {
+                    if (a.is_file !== b.is_file) {
+                        return a.is_file ? 1 : -1;
+                    }
+                    return a.name.localeCompare(b.name);
+                });
+                return files.map(file => {
+                    const itemPath = `${path === '/' ? '' : path}/${file.name}`;
+                    const nodeType = file.is_file ? 'file' : 'folder';
+                    const collapsibleState = file.is_file ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Collapsed;
+                    const item = new ServerTreeItem(file.name, nodeType, collapsibleState, account, server);
+                    item.path = itemPath;
+                    return item;
+                });
+            } catch (e: any) {
+                Logger.error(`Failed to list files for ${path} on server ${server.identifier}`, e);
+                return [new ServerTreeItem(`Error: ${e.message}`, 'error', vscode.TreeItemCollapsibleState.None)];
+            }
+        } else {
+            // Standalone SFTP connection
+            if (this.sftpFileSystemProvider) {
+                let conn = this.sftpFileSystemProvider.getConnection(account.id);
+                if (!conn) {
+                    try {
+                        this.sftpFileSystemProvider.registerConnection(account as SftpOnlyAccount);
+                        conn = this.sftpFileSystemProvider.getConnection(account.id);
+                    } catch (e: any) {
+                        Logger.error(`Failed to register connection for SFTP account ${account.name}`, e);
+                        return [new ServerTreeItem(`Connection error: ${e.message}`, 'error', vscode.TreeItemCollapsibleState.None)];
+                    }
+                }
+                if (conn) {
+                    try {
+                        if (!conn.sftpClient.isConnected()) {
+                            await conn.sftpClient.connect();
+                        }
+                        const entries = await conn.sftpClient.list(path);
+                        if (entries.length === 0) {
+                            return [new ServerTreeItem('Empty folder', 'empty', vscode.TreeItemCollapsibleState.None)];
+                        }
+                        // Sort: folders first, then files
+                        entries.sort((a: any, b: any) => {
+                            if (a.isDirectory !== b.isDirectory) {
+                                return a.isDirectory ? -1 : 1;
+                            }
+                            return a.name.localeCompare(b.name);
+                        });
+                        return entries.map((entry: any) => {
+                            const itemPath = `${path === '/' ? '' : path}/${entry.name}`;
+                            const nodeType = entry.isDirectory ? 'folder' : 'file';
+                            const collapsibleState = entry.isDirectory ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None;
+                            const item = new ServerTreeItem(entry.name, nodeType, collapsibleState, account);
+                            item.path = itemPath;
+                            return item;
+                        });
+                    } catch (e: any) {
+                        Logger.error(`Failed to list SFTP files for ${path}`, e);
+                        return [new ServerTreeItem(`Error: ${e.message}`, 'error', vscode.TreeItemCollapsibleState.None)];
+                    }
+                }
+            }
+            return [new ServerTreeItem('No connection active', 'error', vscode.TreeItemCollapsibleState.None)];
+        }
     }
 
     private getServerInfoItems(server: PteroServer): ServerTreeItem[] {
@@ -353,17 +539,19 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
     }
 
     private async fetchServers(account: PterodactylAccount): Promise<ServerTreeItem[]> {
-        // Check cache first
-        if (this.serverCache.has(account.id)) {
-            const servers = this.serverCache.get(account.id)!;
-            if (servers.length === 0) {
+        const now = Date.now();
+        const cached = this.serverCache.get(account.id);
+        const lastFetch = this.cacheTimestamps.get(account.id) || 0;
+
+        if (cached && (now - lastFetch) < 10000) { // 10s TTL
+            if (cached.length === 0) {
                 return [new ServerTreeItem('No servers found', 'empty', vscode.TreeItemCollapsibleState.None)];
             }
-            return servers.map(
+            return cached.map(
                 server => new ServerTreeItem(
                     server.name,
                     'server',
-                    vscode.TreeItemCollapsibleState.Collapsed, // Collapsed to show info children
+                    vscode.TreeItemCollapsibleState.Collapsed,
                     account,
                     server
                 )
@@ -398,6 +586,7 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
             }));
 
             this.serverCache.set(account.id, servers);
+            this.cacheTimestamps.set(account.id, now);
             this.loadingAccounts.delete(account.id);
             this.errorAccounts.delete(account.id);
 
@@ -472,7 +661,62 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
         return undefined;
     }
 
+    public setServerExpanded(serverUuid: string, expanded: boolean, element?: ServerTreeItem): void {
+        if (expanded && element) {
+            this.expandedServers.set(serverUuid, { element });
+            this.startRefreshTimer(serverUuid);
+        } else {
+            const entry = this.expandedServers.get(serverUuid);
+            if (entry?.timer) {
+                clearTimeout(entry.timer);
+            }
+            this.expandedServers.delete(serverUuid);
+        }
+    }
+
+    private startRefreshTimer(serverUuid: string): void {
+        const entry = this.expandedServers.get(serverUuid);
+        if (!entry) return;
+
+        entry.timer = setTimeout(async () => {
+            await this.refreshServerStats(serverUuid);
+            this.startRefreshTimer(serverUuid);
+        }, 20000); // 20s background polling
+    }
+
+    private async refreshServerStats(serverUuid: string): Promise<void> {
+        const entry = this.expandedServers.get(serverUuid);
+        if (!entry || !entry.element.server || !entry.element.account) return;
+
+        const server = entry.element.server;
+        const account = entry.element.account;
+        if (account.type !== 'pterodactyl') return;
+
+        try {
+            const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
+            const resources = await client.getServerResources(server.uuid);
+            server.status = resources.current_state;
+            server.usage = {
+                memory_bytes: resources.resources.memory_bytes,
+                cpu_absolute: resources.resources.cpu_absolute,
+                disk_bytes: resources.resources.disk_bytes,
+                network_rx_bytes: resources.resources.network_rx_bytes,
+                network_tx_bytes: resources.resources.network_tx_bytes,
+                uptime: resources.resources.uptime || 0
+            };
+            this._onDidChangeTreeData.fire(entry.element);
+        } catch (e) {
+            // silent fail
+        }
+    }
+
     dispose(): void {
         this._onDidChangeTreeData.dispose();
+        for (const [_, entry] of this.expandedServers.entries()) {
+            if (entry.timer) {
+                clearTimeout(entry.timer);
+            }
+        }
+        this.expandedServers.clear();
     }
 }

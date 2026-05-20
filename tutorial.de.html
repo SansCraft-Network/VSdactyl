@@ -122,8 +122,12 @@
         <section id="sftp-connect">
             <h2>Dateien wie lokal verwalten</h2>
             <div class="card">
-                <h3>Verbinden und bearbeiten</h3>
-                <p>Server rechtsklicken und <strong>Connect (SFTP)</strong> wählen. Danach kannst du Dateien direkt im Explorer bearbeiten, speichern, hochladen und organisieren.</p>
+                <h3>Rekursiver Sidebar-Datei-Explorer</h3>
+                <p>Sie müssen keinen Workspace-Ordner mehr mounten, um Remote-Dateien zu durchsuchen oder zu ändern. Sie können jetzt einen Server-Knoten direkt in der <strong>Servers</strong>-Seitenleiste in VS Code erweitern, um dessen Dateien und Unterordner zu durchsuchen. Klicken Sie auf eine Datei, um sie direkt im Editor zu öffnen, und klicken Sie mit der rechten Maustaste, um Elemente sofort herunterzuladen, zu löschen, zu komprimieren oder zu dekomprimieren.</p>
+            </div>
+            <div class="card">
+                <h3>Verbinden und bearbeiten (Nativer Explorer)</h3>
+                <p>Klicken Sie mit der rechten Maustaste auf einen Server und wählen Sie <strong>Connect (SFTP)</strong>. Sie können den Server dann als Arbeitsbereich mounten, Dateien bearbeiten, direkt auf dem Server speichern, Uploads per Drag-and-Drop durchführen und Ordner im nativen VS Code Datei-Explorer verwalten.</p>
             </div>
         </section>
 
@@ -143,6 +147,10 @@
                 <h3>Superschnelle Uploads</h3>
                 <p>Ziehen Sie einen riesigen Ordner direkt auf einen Serverknoten. VSDactyl fängt den Vorgang automatisch ab, komprimiert die Dateien in ein einziges Archiv, lädt das Bündel über SFTP hoch und entpackt es sofort auf dem Remote-Server.</p>
                 <div class="tip-box"><strong>Tipp:</strong> Überwachen Sie Live-Upload-Geschwindigkeiten, legen Sie aktive Drosseln fest und zeigen Sie verbleibende ETAs über das <strong>Transfer Manager Dashboard</strong> über das Sync-Symbol an!</div>
+            </div>
+            <div class="card">
+                <h3>Serverseitige Archivverwaltung</h3>
+                <p>Sie können Ordner packen oder Archive direkt auf dem Serverhost extrahieren, ohne Bytes über das Netzwerk zu übertragen. Klicken Sie mit der rechten Maustaste auf Ordner in der Server Tree-Seitenleiste und wählen Sie <strong>Compress to Archive (Server-side)</strong>, um sie zu zippen/teeren, oder klicken Sie mit der rechten Maustaste auf ein Zip/Tar-Archiv und wählen Sie <strong>Decompress Archive (Server-side)</strong>, um es sofort über die Wings-API zu extrahieren.</p>
             </div>
         </section>
 

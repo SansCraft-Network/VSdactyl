@@ -69,7 +69,7 @@
 
     <div class="content">
         <header id="jump-start">
-            <div class="version-badge">Versión 2.1.x • Estable</div>
+            <div class="version-badge">Versión 2.3.0 • Estable</div>
             <h1>Hola,<br>bienvenido a VSDactyl.</h1>
             <p class="hero-desc">VSDactyl te permite gestionar archivos y consola de servidores remotos directamente en VS Code, con un flujo rápido y seguro.</p>
         </header>
@@ -122,8 +122,12 @@
         <section id="sftp-connect">
             <h2>Gestiona archivos como si fueran locales</h2>
             <div class="card">
-                <h3>Conectar y editar</h3>
-                <p>Haz clic derecho en un servidor y elige <strong>Connect (SFTP)</strong>. Después puedes editar, guardar, subir y organizar archivos desde Explorer.</p>
+                <h3>Explorador de Archivos en Barra Lateral Recurrente</h3>
+                <p>Ya no necesitas montar una carpeta de espacio de trabajo para explorar o modificar archivos remotos. Ahora puedes expandir un nodo de servidor directamente dentro de la barra lateral de la vista de árbol de <strong>Servers</strong> en VS Code para explorar sus archivos y subcarpetas. Haz clic en cualquier archivo para abrirlo directamente en el editor, y haz clic derecho para descargar, eliminar, comprimir o descomprimir elementos al instante.</p>
+            </div>
+            <div class="card">
+                <h3>Conectar y editar (Explorador Nativo)</h3>
+                <p>Haz clic derecho en un servidor y elige <strong>Connect (SFTP)</strong>. Luego puedes montar el servidor como un espacio de trabajo, editar archivos, guardarlos directamente en el servidor, cargar archivos por arrastrar y soltar, y gestionar carpetas desde el Explorador de Archivos nativo de VS Code.</p>
             </div>
         </section>
 
@@ -143,6 +147,10 @@
                 <h3>Subidas Ultrarrápidas</h3>
                 <p>Arrastra y suelta una carpeta enorme directamente en un nodo del servidor. VSDactyl intercepta automáticamente la acción, comprime los archivos en un solo archivo, lo sube a través de SFTP y lo extrae instantáneamente en el servidor remoto.</p>
                 <div class="tip-box"><strong>Consejo:</strong> Monitorea las velocidades de subida en vivo, establece límites activos y revisa los tiempos estimados restantes mediante el panel <strong>Transfer Manager Dashboard</strong> a través del ícono de sincronización en la parte superior de la Vista del Servidor.</div>
+            </div>
+            <div class="card">
+                <h3>Gestión de Archivos en el Servidor</h3>
+                <p>Puedes empaquetar carpetas o extraer archivos directamente en el servidor sin transferir bytes por la red. Haz clic derecho en carpetas en la barra lateral del Árbol del Servidor y selecciona <strong>Compress to Archive (Server-side)</strong> para comprimirlas en zip/tar, o haz clic derecho en cualquier archivo comprimido zip/tar y selecciona <strong>Decompress Archive (Server-side)</strong> para extraerlos al instante mediante la API Wings.</p>
             </div>
         </section>
 

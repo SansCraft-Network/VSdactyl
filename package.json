@@ -2,7 +2,7 @@
     "name": "sanscraft-vsdactyl",
     "displayName": "VSDactyl",
     "description": "VSDactyl, SansCraft Network's official fork of the Pterodactyl extension from MinhMCPC, for connecting to panel and standalone SFTP servers from VS Code",
-    "version": "2.2.14",
+    "version": "2.3.0",
     "icon": "resources/icon.png",
     "license": "MIT",
     "publisher": "SansCraftNetworkCorp",
@@ -170,6 +170,21 @@
                 "command": "pterodactyl.initSyncConfig",
                 "title": "VSDactyl: Map Local Folder (Auto-Sync)",
                 "icon": "$(sync)"
+            },
+            {
+                "command": "pterodactyl.downloadFromNode",
+                "title": "VSDactyl: Download Folder From Node",
+                "icon": "$(cloud-download)"
+            },
+            {
+                "command": "pterodactyl.decompressFile",
+                "title": "VSDactyl: Decompress Archive (Server-side)",
+                "icon": "$(file-zip)"
+            },
+            {
+                "command": "pterodactyl.compressFile",
+                "title": "VSDactyl: Compress to Archive (Server-side)",
+                "icon": "$(file-zip)"
             }
         ],
         "menus": {
@@ -295,6 +310,21 @@
                     "command": "pterodactyl.initSyncConfig",
                     "when": "view == pterodactylServers && viewItem =~ /server.*/",
                     "group": "context@5"
+                },
+                {
+                    "command": "pterodactyl.downloadFromNode",
+                    "when": "view == pterodactylServers && (viewItem =~ /server.*/ || viewItem == folder-ptero || viewItem == folder-sftp || viewItem == file-ptero || viewItem == file-sftp)",
+                    "group": "context@6"
+                },
+                {
+                    "command": "pterodactyl.decompressFile",
+                    "when": "view == pterodactylServers && viewItem == file-ptero",
+                    "group": "context@7"
+                },
+                {
+                    "command": "pterodactyl.compressFile",
+                    "when": "view == pterodactylServers && (viewItem == file-ptero || viewItem == folder-ptero)",
+                    "group": "context@8"
                 }
             ],
             "explorer/context": [
@@ -349,7 +379,8 @@
     "scripts": {
         "vscode:prepublish": "npm run compile",
         "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./"
+        "watch": "tsc -watch -p ./",
+        "test": "npm run compile && node --test out"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",

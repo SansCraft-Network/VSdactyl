@@ -182,7 +182,7 @@
 
     <div class="content">
         <header id="jump-start">
-            <div class="version-badge">Version 2.1.x • Stable</div>
+            <div class="version-badge">Version 2.3.0 • Stable</div>
             <h1>Hello,<br>Welcome to VSDactyl.</h1>
             <p class="hero-desc">VSDactyl helps you manage remote game server files and console operations directly in VS Code with a faster workflow and SansCraft-first UX.</p>
         </header>
@@ -236,8 +236,12 @@
         <section id="sftp-connect">
             <h2>Manage files like local files</h2>
             <div class="card">
-                <h3>Connect and edit</h3>
-                <p>Right-click a server and choose <strong>Connect (SFTP)</strong>. You can then edit files, save directly to the server, drag and drop uploads, and manage folders from Explorer.</p>
+                <h3>Recursive Sidebar File Explorer</h3>
+                <p>You no longer need to mount a workspace folder to browse or modify remote files. You can now expand a server node directly inside the <strong>Servers</strong> tree view sidebar in VS Code to browse its files and subfolders. Click any file to open it directly in the editor, and right-click to download, delete, compress, or decompress items instantly.</p>
+            </div>
+            <div class="card">
+                <h3>Connect and edit (Native Explorer)</h3>
+                <p>Right-click a server and choose <strong>Connect (SFTP)</strong>. You can then mount the server as a workspace, edit files, save directly to the server, drag and drop uploads, and manage folders from the native VS Code File Explorer.</p>
             </div>
         </section>
 
@@ -264,6 +268,10 @@
                 <h3>Lightning Fast Uploads</h3>
                 <p>Drag and drop a massive folder directly onto a server node. VSDactyl automatically intercepts the drop, compresses the files into a single archive, uploads the bundle over SFTP, and instantly extracts it on the remote server.</p>
                 <div class="tip-box"><strong>Tip:</strong> Monitor live upload speeds, set active throttles, and view remaining ETAs using the <strong>Transfer Manager Dashboard</strong> via the Sync icon at the top of the Server View!</div>
+            </div>
+            <div class="card">
+                <h3>Server-Side Archive Management</h3>
+                <p>You can package folders or extract archives directly on the server host without transferring bytes over the network. Right-click folders in the Server Tree sidebar and select <strong>Compress to Archive (Server-side)</strong> to zip/tar them up, or right-click any zip/tar archive and select <strong>Decompress Archive (Server-side)</strong> to extract them instantly via the Wings API.</p>
             </div>
         </section>
 

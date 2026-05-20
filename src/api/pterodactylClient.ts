@@ -210,6 +210,14 @@ export class PterodactylClient {
         await this.request<void>('POST', `/api/client/servers/${serverUuid}/files/decompress`, { root, file });
     }
 
+    async copyFile(serverUuid: string, location: string): Promise<void> {
+        await this.request<void>('POST', `/api/client/servers/${serverUuid}/files/copy`, { location });
+    }
+
+    async compressFiles(serverUuid: string, root: string, files: string[]): Promise<any> {
+        return this.request<any>('POST', `/api/client/servers/${serverUuid}/files/compress`, { root, files });
+    }
+
     async renameFile(serverUuid: string, root: string, from: string, to: string): Promise<void> {
         await this.request<void>('PUT', `/api/client/servers/${serverUuid}/files/rename`, {
             root,

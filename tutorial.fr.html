@@ -69,7 +69,7 @@
 
     <div class="content">
         <header id="jump-start">
-            <div class="version-badge">Version 2.1.x • Stable</div>
+            <div class="version-badge">Version 2.3.0 • Stable</div>
             <h1>Bonjour,<br>bienvenue sur VSDactyl.</h1>
             <p class="hero-desc">VSDactyl vous permet de gérer les fichiers et la console de vos serveurs distants directement dans VS Code, avec un flux rapide et sécurisé.</p>
         </header>
@@ -122,8 +122,12 @@
         <section id="sftp-connect">
             <h2>Gérer les fichiers comme en local</h2>
             <div class="card">
-                <h3>Connexion et édition</h3>
-                <p>Cliquez droit sur un serveur puis <strong>Connect (SFTP)</strong>. Vous pouvez ensuite modifier, enregistrer, téléverser et organiser les fichiers depuis l'explorateur.</p>
+                <h3>Explorateur de Fichiers Récurrent dans la Barre Latérale</h3>
+                <p>Vous n'avez plus besoin de monter un dossier d'espace de travail pour parcourir ou modifier des fichiers distants. Vous pouvez désormais développer un nœud de serveur directement dans la barre latérale de l'arborescence des <strong>Servers</strong> dans VS Code pour parcourir ses fichiers et sous-dossiers. Cliquez sur n'importe quel fichier pour l'ouvrir directement dans l'éditeur, et faites un clic droit pour télécharger, supprimer, compresser ou décompresser des éléments instantanément.</p>
+            </div>
+            <div class="card">
+                <h3>Connexion et édition (Explorateur Natif)</h3>
+                <p>Faites un clic droit sur un serveur puis choisissez <strong>Connect (SFTP)</strong>. Vous pouvez ensuite monter le serveur en tant qu'espace de travail, modifier des fichiers, les enregistrer directement sur le serveur, téléverser des fichiers par glisser-déposer, et gérer les dossiers depuis l'explorateur de fichiers natif de VS Code.</p>
             </div>
         </section>
 
@@ -143,6 +147,10 @@
                 <h3>Uploads Ultra-rapides</h3>
                 <p>Glissez-déposez un énorme dossier directement sur un nœud de serveur. VSDactyl intercepte automatiquement le dépôt, compresse les fichiers dans une archive unique, téléverse le paquet via SFTP et l'extrait instantanément sur le serveur distant.</p>
                 <div class="tip-box"><strong>Astuce :</strong> Surveillez les vitesses de téléversement en direct, définissez des limites actives et consultez les ETA restantes à l'aide du tableau de bord <strong>Transfer Manager Dashboard</strong> via l'icône de synchronisation en haut de la vue Serveur !</div>
+            </div>
+            <div class="card">
+                <h3>Gestion des Archives Côté Serveur</h3>
+                <p>Vous pouvez empaqueter des dossiers ou extraire des archives directement sur le serveur sans transférer de octets sur le réseau. Faites un clic droit sur les dossiers de la barre latérale de l'arbre du serveur et sélectionnez <strong>Compress to Archive (Server-side)</strong> pour les compresser au format zip/tar, ou faites un clic droit sur n'importe quelle archive zip/tar et sélectionnez <strong>Decompress Archive (Server-side)</strong> pour les extraire instantanément via l'API Wings.</p>
             </div>
         </section>
 
