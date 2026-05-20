@@ -14,6 +14,7 @@ import { TransferOrchestrator } from './transfers/transferOrchestrator';
 import { BulkTransferEngine } from './transfers/bulkTransferEngine';
 import { SyncManager } from './sync/syncManager';
 import { registerLanguageModelTools } from './tools/languageModelTools';
+import { activateAgentBridge } from './tools/agentBridge';
 
 let accountManager!: AccountManager;
 let serverTreeProvider!: ServerTreeProvider;
@@ -55,6 +56,9 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register Language Model Tools for AI Agents / Copilot
     registerLanguageModelTools(context, accountManager, serverTreeProvider);
+
+    // Activate the Agent Bridge for standalone agents
+    activateAgentBridge(context, accountManager, serverTreeProvider);
 
     // Subscribe to transfer completion events to refresh tree view
     context.subscriptions.push(transferManager.onDidUpdateSession((session) => {

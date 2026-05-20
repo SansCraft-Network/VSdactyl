@@ -498,6 +498,18 @@
                     "default": 500,
                     "description": "Size threshold in Megabytes to trigger the 7-Zip compression prompt for bulk uploads.",
                     "scope": "window"
+                },
+                "vsdactyl.agentBridge.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable local loopback HTTP server to allow external/standalone AI agents in the workspace to interact with VSDactyl.",
+                    "scope": "window"
+                },
+                "vsdactyl.agentBridge.port": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Port number for the Agent Bridge HTTP server. Set to 0 to automatically pick a random free port.",
+                    "scope": "window"
                 }
             }
         }
