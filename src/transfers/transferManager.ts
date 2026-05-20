@@ -12,6 +12,9 @@ import {
 export class TransferManager implements TransferSessionStore {
     private static instance: TransferManager;
 
+    private readonly _onDidUpdateSession = new vscode.EventEmitter<TransferSession>();
+    readonly onDidUpdateSession = this._onDidUpdateSession.event;
+
     private readonly sessions = new Map<string, TransferSession>();
     private readonly childToSession = new Map<string, string>();
     private webviewPanel: vscode.WebviewPanel | null = null;
@@ -36,6 +39,7 @@ export class TransferManager implements TransferSessionStore {
         this.sessions.set(next.id, next);
         Logger.info(`TransferManager: registered session ${next.id} (${next.title}) for server ${next.serverIdentifier}`);
         this.broadcastSessions();
+        this._onDidUpdateSession.fire(next);
         return next;
     }
 
@@ -43,6 +47,7 @@ export class TransferManager implements TransferSessionStore {
         session.updatedAt = Date.now();
         this.sessions.set(session.id, session);
         this.broadcastSessions();
+        this._onDidUpdateSession.fire(session);
         return session;
     }
 
@@ -102,6 +107,7 @@ export class TransferManager implements TransferSessionStore {
         }
 
         this.broadcastSessions();
+        this._onDidUpdateSession.fire(session);
     }
 
     public cancelSession(sessionId: string, reason?: string): void {
@@ -117,6 +123,7 @@ export class TransferManager implements TransferSessionStore {
         Logger.info(`TransferManager: session ${sessionId} cancelled: ${session.error}`);
         this.playNotificationSound(session);
         this.broadcastSessions();
+        this._onDidUpdateSession.fire(session);
     }
 
     public cancelChild(sessionId: string, childId: string, reason?: string): void {
@@ -127,6 +134,7 @@ export class TransferManager implements TransferSessionStore {
         child.cancel?.();
         session.updatedAt = Date.now();
         this.broadcastSessions();
+        this._onDidUpdateSession.fire(session);
     }
 
     public async showDashboard(): Promise<void> {

@@ -3,6 +3,20 @@ import * as fs from 'fs';
 import { PteroAccount, PterodactylClient } from '../api/pterodactylClient';
 import { SftpClient, SftpConnectionInfo } from '../sftp/sftpClient';
 import { BaseSftpFileSystemProvider, BaseServerConnection, SyncStatusReporter } from './baseSftpFileSystemProvider';
+import { Logger } from '../utils/logger';
+import { AccountManager } from '../accounts/accountManager';
+
+function isTextFile(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    if (!ext) return false;
+    const textExtensions = new Set([
+        'json', 'yml', 'yaml', 'properties', 'txt', 'conf', 'cfg', 'ini', 
+        'sh', 'bat', 'cmd', 'js', 'ts', 'html', 'css', 'md', 'py', 'java', 
+        'xml', 'log', 'toml', 'env', 'gitattributes', 'gitignore', 'php', 
+        'go', 'rs', 'cpp', 'h', 'c', 'cs', 'sql', 'json5'
+    ]);
+    return textExtensions.has(ext);
+}
 
 interface ServerConnection extends BaseServerConnection {
     account: PteroAccount;
@@ -99,6 +113,7 @@ export class PterodactylFileSystemProvider extends BaseSftpFileSystemProvider<Se
     }
 
     async delete(uri: vscode.Uri, options: { recursive: boolean }): Promise<void> {
+        await this.ensureConnectionRegistered(uri.authority);
         const identifier = uri.authority;
         const conn = this.connections.get(identifier);
 
@@ -129,6 +144,7 @@ export class PterodactylFileSystemProvider extends BaseSftpFileSystemProvider<Se
     }
 
     async createDirectory(uri: vscode.Uri): Promise<void> {
+        await this.ensureConnectionRegistered(uri.authority);
         const identifier = uri.authority;
         const conn = this.connections.get(identifier);
 
@@ -158,6 +174,7 @@ export class PterodactylFileSystemProvider extends BaseSftpFileSystemProvider<Se
     }
 
     async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+        await this.ensureConnectionRegistered(oldUri.authority);
         const isSameRemoteConnection = oldUri.scheme === newUri.scheme && oldUri.authority === newUri.authority;
         if (!isSameRemoteConnection) {
             return super.rename(oldUri, newUri, options);
@@ -236,4 +253,139 @@ export class PterodactylFileSystemProvider extends BaseSftpFileSystemProvider<Se
 
         return super.rename(oldUri, newUri, options);
     }
+
+    async copy(source: vscode.Uri, destination: vscode.Uri, options: { overwrite: boolean }): Promise<void> {
+        await this.ensureConnectionRegistered(source.authority);
+        const isSameConnection = source.scheme === destination.scheme && source.authority === destination.authority;
+        const conn = this.connections.get(source.authority);
+
+        if (isSameConnection && conn && conn.account.type === 'pterodactyl') {
+            const sourcePath = this.getFilePath(source);
+            const destinationPath = this.getFilePath(destination);
+
+            const fromRel = sourcePath.startsWith('/') ? sourcePath.substring(1) : sourcePath;
+            const toRel = destinationPath.startsWith('/') ? destinationPath.substring(1) : destinationPath;
+            const duplicateRel = `${fromRel} copy`;
+
+            this.syncStatusReporter?.beginSync(destination);
+            try {
+                const client = new PterodactylClient(conn.account.panelUrl, conn.account.apiKey || '');
+                // 1. Copy file/folder (duplicates in-place with ' copy' suffix)
+                await client.copyFile(conn.serverIdentifier, fromRel);
+                
+                // 2. Rename the duplicate to the target destination
+                await client.renameFile(conn.serverIdentifier, '/', duplicateRel, toRel);
+
+                this._onDidChangeFile.fire([{
+                    type: vscode.FileChangeType.Created,
+                    uri: destination,
+                }]);
+                this.syncStatusReporter?.completeSync(destination);
+                return;
+            } catch (err: any) {
+                Logger.warn(`API copy failed for ${sourcePath}: ${err.message || err}. Falling back to SFTP copy.`);
+                this.syncStatusReporter?.failSync(destination);
+            }
+        }
+
+        return super.copy(source, destination, options);
+    }
+
+    async readFile(uri: vscode.Uri): Promise<Uint8Array> {
+        await this.ensureConnectionRegistered(uri.authority);
+        const identifier = uri.authority;
+        const conn = this.connections.get(identifier);
+
+        if (conn && conn.account.type === 'pterodactyl') {
+            const filePath = this.getFilePath(uri);
+            const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+            
+            const parts = filePath.split('/');
+            const filename = parts.pop() || '';
+            if (isTextFile(filename)) {
+                try {
+                    const client = new PterodactylClient(conn.account.panelUrl, conn.account.apiKey || '');
+                    const contents = await client.getFileContents(conn.serverIdentifier, relativePath);
+                    const encoder = new TextEncoder();
+                    return encoder.encode(contents);
+                } catch (err: any) {
+                    Logger.warn(`API readFile failed for ${filePath}: ${err.message || err}. Falling back to SFTP.`);
+                }
+            }
+        }
+
+        return super.readFile(uri);
+    }
+
+    async writeFile(uri: vscode.Uri, content: Uint8Array, options: { create: boolean; overwrite: boolean }): Promise<void> {
+        await this.ensureConnectionRegistered(uri.authority);
+        const identifier = uri.authority;
+        const conn = this.connections.get(identifier);
+
+        if (conn && conn.account.type === 'pterodactyl' && content.length <= 5 * 1024 * 1024) {
+            const filePath = this.getFilePath(uri);
+            const relativePath = filePath.startsWith('/') ? filePath.substring(1) : filePath;
+            
+            const parts = filePath.split('/');
+            const filename = parts.pop() || '';
+            if (isTextFile(filename)) {
+                this.syncStatusReporter?.beginSync(uri);
+                try {
+                    const client = new PterodactylClient(conn.account.panelUrl, conn.account.apiKey || '');
+                    const decoder = new TextDecoder('utf-8');
+                    const text = decoder.decode(content);
+                    await client.writeFile(conn.serverIdentifier, relativePath, text);
+                    
+                    this._onDidChangeFile.fire([{
+                        type: vscode.FileChangeType.Changed,
+                        uri,
+                    }]);
+                    this.syncStatusReporter?.completeSync(uri);
+                    return;
+                } catch (err: any) {
+                    Logger.warn(`API writeFile failed for ${filePath}: ${err.message || err}. Falling back to SFTP.`);
+                    this.syncStatusReporter?.failSync(uri);
+                }
+            }
+        }
+
+        return super.writeFile(uri, content, options);
+    }
+
+    protected async ensureConnectionRegistered(serverIdentifier: string): Promise<void> {
+        if (this.connections.has(serverIdentifier)) {
+            return;
+        }
+
+        if (!this.accountManager) {
+            return;
+        }
+
+        const accounts = await this.accountManager.getAccounts();
+        for (const account of accounts) {
+            if (account.type !== 'pterodactyl') {
+                continue;
+            }
+            try {
+                const client = new PterodactylClient(account.panelUrl, account.apiKey || '');
+                const servers = await client.listServers();
+                const server = servers.find(s => s.identifier === serverIdentifier);
+                if (server) {
+                    const sftpHost = server.sftp_details.ip;
+                    const sftpPort = server.sftp_details.port || 2022;
+                    this.registerConnection(
+                        serverIdentifier,
+                        account,
+                        server.name,
+                        sftpHost,
+                        sftpPort
+                    );
+                    return;
+                }
+            } catch (err) {
+                Logger.warn(`Failed searching servers for account ${account.name}: ${err}`);
+            }
+        }
+    }
 }
+

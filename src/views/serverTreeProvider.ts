@@ -7,7 +7,16 @@ import { Logger } from '../utils/logger';
 export type TreeNodeType = 'account' | 'server' | 'serverInfo' | 'systemInfo' | 'folder' | 'file' | 'loading' | 'error' | 'empty';
 
 export class ServerTreeItem extends vscode.TreeItem {
-    public path?: string;
+    private _path?: string;
+
+    public get path(): string | undefined {
+        return this._path;
+    }
+
+    public set path(value: string | undefined) {
+        this._path = value;
+        this.setupAppearance();
+    }
 
     constructor(
         public readonly label: string,
@@ -349,8 +358,27 @@ export class ServerTreeProvider implements vscode.TreeDataProvider<ServerTreeIte
         });
     }
 
-    refresh(): void {
-        this._onDidChangeTreeData.fire(undefined);
+    refresh(element?: ServerTreeItem): void {
+        this._onDidChangeTreeData.fire(element);
+    }
+
+    public refreshServer(serverIdentifierOrUuid: string): void {
+        let entry = this.expandedServers.get(serverIdentifierOrUuid);
+        if (!entry) {
+            for (const [_, e] of this.expandedServers.entries()) {
+                if (e.element.server?.identifier === serverIdentifierOrUuid || 
+                    e.element.server?.uuid === serverIdentifierOrUuid || 
+                    e.element.account?.id === serverIdentifierOrUuid) {
+                    entry = e;
+                    break;
+                }
+            }
+        }
+        if (entry) {
+            this._onDidChangeTreeData.fire(entry.element);
+        } else {
+            this._onDidChangeTreeData.fire(undefined);
+        }
     }
 
     getTreeItem(element: ServerTreeItem): vscode.TreeItem {

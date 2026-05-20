@@ -41,7 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
     remoteDecorationProvider = new RemoteFileDecorationProvider();
     // Initialize core systems
     fileSystemProvider = new PterodactylFileSystemProvider();
+    fileSystemProvider.setAccountManager(accountManager);
     sftpFileSystemProvider = new SftpOnlyFileSystemProvider();
+    sftpFileSystemProvider.setAccountManager(accountManager);
     serverTreeProvider.setFileSystemProviders(fileSystemProvider, sftpFileSystemProvider);
     terminalManager = new TerminalManager();
     transferManager = TransferManager.getInstance(context);
@@ -49,6 +51,25 @@ export function activate(context: vscode.ExtensionContext) {
     fileSystemProvider.setOrchestrator(transferOrchestrator);
     sftpFileSystemProvider.setOrchestrator(transferOrchestrator);
     syncManager = SyncManager.getInstance(context, accountManager);
+
+    // Subscribe to transfer completion events to refresh tree view
+    context.subscriptions.push(transferManager.onDidUpdateSession((session) => {
+        if (session.status === 'completed' || session.status === 'failed') {
+            serverTreeProvider.refreshServer(session.serverIdentifier);
+        }
+    }));
+
+    // Subscribe to file system changes to refresh tree view
+    context.subscriptions.push(fileSystemProvider.onDidChangeFile((events) => {
+        for (const event of events) {
+            serverTreeProvider.refreshServer(event.uri.authority);
+        }
+    }));
+    context.subscriptions.push(sftpFileSystemProvider.onDidChangeFile((events) => {
+        for (const event of events) {
+            serverTreeProvider.refreshServer(event.uri.authority);
+        }
+    }));
 
     // Register file system providers
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider('ptero', fileSystemProvider, { isCaseSensitive: true }));

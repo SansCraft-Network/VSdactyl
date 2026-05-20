@@ -1,3 +1,9 @@
+## [2.3.2-vsdactyl] - 2026-05-20
+
+### 🚀 Major Improvements
+- **Double-Click File Opening**: Resolved the connection lifecycle issue where double-clicking files in the Server Tree View failed to open due to missing registered connection objects.
+- **Dynamic On-Demand Connection Registration**: Implemented self-healing connection resolution. Both the Pterodactyl panel and standalone SFTP file system providers now automatically query configuration/APIs and restore server connections on-the-fly when files or directories are accessed.
+
 ## [2.3.1-vsdactyl] - 2026-05-19
 
 ### 🐛 Bug Fixes

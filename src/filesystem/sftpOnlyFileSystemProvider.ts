@@ -4,6 +4,8 @@ import { SftpOnlyAccount } from '../accounts/types';
 import { SftpClient, SftpConnectionInfo } from '../sftp/sftpClient';
 import { BaseSftpFileSystemProvider, BaseServerConnection, SyncStatusReporter } from './baseSftpFileSystemProvider';
 
+import { AccountManager } from '../accounts/accountManager';
+
 export interface SftpOnlyServerConnection extends BaseServerConnection {
     account: SftpOnlyAccount;
 }
@@ -87,6 +89,21 @@ export class SftpOnlyFileSystemProvider extends BaseSftpFileSystemProvider<SftpO
                 password: conn.account.password,
                 privateKey,
             });
+        }
+    }
+
+    protected async ensureConnectionRegistered(accountId: string): Promise<void> {
+        if (this.connections.has(accountId)) {
+            return;
+        }
+
+        if (!this.accountManager) {
+            return;
+        }
+
+        const account = await this.accountManager.getAccountById(accountId);
+        if (account && account.type === 'sftpOnly') {
+            this.registerConnection(account as SftpOnlyAccount);
         }
     }
 }

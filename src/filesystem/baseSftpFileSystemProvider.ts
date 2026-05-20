@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { SftpClient } from '../sftp/sftpClient';
+import { AccountManager } from '../accounts/accountManager';
 
 export interface SyncStatusReporter {
     beginSync(uri: vscode.Uri): void;
@@ -16,9 +17,14 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
     protected _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     readonly onDidChangeFile = this._onDidChangeFile.event;
 
+    protected accountManager?: AccountManager;
     protected connections: Map<string, T> = new Map();
     protected transferOrchestrator?: any;
     protected static hasShownLargeFileWarning = false;
+
+    public setAccountManager(accountManager: AccountManager) {
+        this.accountManager = accountManager;
+    }
 
     public setOrchestrator(orchestrator: any) {
         this.transferOrchestrator = orchestrator;
@@ -30,13 +36,18 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
         return this.connections.get(identifier);
     }
 
-    protected getClient(uri: vscode.Uri): SftpClient {
+    protected async getClient(uri: vscode.Uri): Promise<SftpClient> {
         const identifier = uri.authority;
+        await this.ensureConnectionRegistered(identifier);
         const conn = this.connections.get(identifier);
         if (!conn) {
             throw vscode.FileSystemError.Unavailable(`Not connected: ${identifier}`);
         }
         return conn.sftpClient;
+    }
+
+    protected async ensureConnectionRegistered(_identifier: string): Promise<void> {
+        // Overridden by subclasses to dynamically restore connections on demand
     }
 
     protected getFilePath(uri: vscode.Uri): string {
@@ -89,7 +100,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
             };
         }
 
-        const client = this.getClient(uri);
+        const client = await this.getClient(uri);
 
         try {
             const entry = await client.stat(filePath);
@@ -111,7 +122,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
         const filePath = this.getFilePath(uri);
-        const client = this.getClient(uri);
+        const client = await this.getClient(uri);
 
         try {
             const entries = await client.list(filePath);
@@ -128,7 +139,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async readFile(uri: vscode.Uri): Promise<Uint8Array> {
         const filePath = this.getFilePath(uri);
-        const client = this.getClient(uri);
+        const client = await this.getClient(uri);
 
         try {
             const buffer = await client.readFile(filePath);
@@ -143,7 +154,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async writeFile(uri: vscode.Uri, content: Uint8Array, _options: { create: boolean; overwrite: boolean }): Promise<void> {
         const filePath = this.getFilePath(uri);
-        const client = this.getClient(uri);
+        const client = await this.getClient(uri);
         this.syncStatusReporter?.beginSync(uri);
 
         const sizeThresholdBytes = 10 * 1024 * 1024; // 10 MB
@@ -190,7 +201,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
         try {
             if (session && transferManager) {
-                const sftpClient = this.getClient(uri);
+                const sftpClient = await this.getClient(uri);
                 const remoteStream = await sftpClient.writeFileStream(filePath);
                 const stream = require('stream');
                 const bufferStream = new stream.Readable();
@@ -233,7 +244,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async delete(uri: vscode.Uri, options: { recursive: boolean }): Promise<void> {
         const filePath = this.getFilePath(uri);
-        const client = this.getClient(uri);
+        const client = await this.getClient(uri);
         this.syncStatusReporter?.beginSync(uri);
 
         try {
@@ -349,7 +360,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
         const oldPath = this.getFilePath(oldUri);
         const newPath = this.getFilePath(newUri);
-        const client = this.getClient(oldUri);
+        const client = await this.getClient(oldUri);
         this.syncStatusReporter?.beginSync(oldUri);
         this.syncStatusReporter?.beginSync(newUri);
 
@@ -376,7 +387,7 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async createDirectory(uri: vscode.Uri): Promise<void> {
         const filePath = this.getFilePath(uri);
-        const client = this.getClient(uri);
+        const client = await this.getClient(uri);
         this.syncStatusReporter?.beginSync(uri);
 
         try {
