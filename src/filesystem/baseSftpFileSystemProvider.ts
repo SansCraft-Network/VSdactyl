@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SftpClient } from '../sftp/sftpClient';
 import { AccountManager } from '../accounts/accountManager';
+import { matchesPattern, SyncManager } from '../sync/syncManager';
 
 export interface SyncStatusReporter {
     beginSync(uri: vscode.Uri): void;
@@ -84,6 +85,43 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
         return message.includes('filenotfound') || message.includes('entry not found');
     }
 
+    protected getExclusions(identifier: string): string[] {
+        const exclusions: string[] = [];
+        if (typeof vscode.workspace.getConfiguration === 'function') {
+            const config = vscode.workspace.getConfiguration('vsdactyl.sync');
+            const globalExclusions = config.get<string[]>('remoteExclusions', []);
+            exclusions.push(...globalExclusions);
+        }
+
+        try {
+            const SyncManagerClass = SyncManager;
+            if (SyncManagerClass['instance']) {
+                const syncManager = SyncManagerClass.getInstance(undefined as any);
+                const syncConfig = syncManager.getSyncConfig(identifier);
+                if (syncConfig && syncConfig.remoteExcludePatterns) {
+                    exclusions.push(...syncConfig.remoteExcludePatterns);
+                }
+            }
+        } catch {
+            // SyncManager might not be initialized yet
+        }
+
+        return exclusions;
+    }
+
+    protected isExcluded(filePath: string, exclusions: string[]): boolean {
+        if (filePath === '/' || filePath === '') {
+            return false;
+        }
+        const relativePath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+        for (const pattern of exclusions) {
+            if (matchesPattern(relativePath, pattern) || matchesPattern(filePath, pattern)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     watch(_uri: vscode.Uri, _options: { recursive: boolean; excludes: string[] }): vscode.Disposable {
         return new vscode.Disposable(() => { });
     }
@@ -98,6 +136,11 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
                 mtime: Date.now(),
                 size: 0,
             };
+        }
+
+        const exclusions = this.getExclusions(uri.authority);
+        if (this.isExcluded(filePath, exclusions)) {
+            throw vscode.FileSystemError.FileNotFound(uri);
         }
 
         const client = await this.getClient(uri);
@@ -122,16 +165,25 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async readDirectory(uri: vscode.Uri): Promise<[string, vscode.FileType][]> {
         const filePath = this.getFilePath(uri);
+        const exclusions = this.getExclusions(uri.authority);
+        if (this.isExcluded(filePath, exclusions)) {
+            return [];
+        }
         const client = await this.getClient(uri);
 
         try {
             const entries = await client.list(filePath);
-            return entries.map(entry => [
-                entry.name,
-                entry.isDirectory ? vscode.FileType.Directory :
-                    entry.isSymlink ? vscode.FileType.SymbolicLink :
-                        vscode.FileType.File,
-            ]);
+            return entries
+                .filter(entry => {
+                    const childPath = filePath === '/' ? `/${entry.name}` : `${filePath}/${entry.name}`;
+                    return !this.isExcluded(childPath, exclusions);
+                })
+                .map(entry => [
+                    entry.name,
+                    entry.isDirectory ? vscode.FileType.Directory :
+                        entry.isSymlink ? vscode.FileType.SymbolicLink :
+                            vscode.FileType.File,
+                ]);
         } catch (err: any) {
             throw vscode.FileSystemError.Unavailable(err.message);
         }
@@ -139,6 +191,10 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
 
     async readFile(uri: vscode.Uri): Promise<Uint8Array> {
         const filePath = this.getFilePath(uri);
+        const exclusions = this.getExclusions(uri.authority);
+        if (this.isExcluded(filePath, exclusions)) {
+            throw vscode.FileSystemError.FileNotFound(uri);
+        }
         const client = await this.getClient(uri);
 
         try {
@@ -209,18 +265,25 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
                 bufferStream.push(null); // End of stream
 
                 let transferred = 0;
+                let completed = false;
                 await new Promise<void>((resolve, reject) => {
+                    const done = (err?: Error) => {
+                        if (completed) return;
+                        completed = true;
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    };
                     bufferStream.on('data', (chunk: Buffer) => {
                         transferred += chunk.length;
                         transferManager.updateChildProgress(session.id, session.children[0].id, transferred);
                     });
-                    bufferStream.on('error', reject);
-                    remoteStream.on('error', (err: any) => {
-                        reject(err);
-                    });
-                    remoteStream.on('close', () => {
-                        resolve();
-                    });
+                    bufferStream.on('error', (err: any) => done(err));
+                    remoteStream.on('error', (err: any) => done(err));
+                    remoteStream.on('finish', () => done());
+                    remoteStream.on('close', () => done());
                     bufferStream.pipe(remoteStream);
                 });
                 transferManager.completeChild(session.id, session.children[0].id, true);
@@ -521,29 +584,51 @@ export abstract class BaseSftpFileSystemProvider<T extends BaseServerConnection>
                         
                         const remoteStream = await sourceConn.sftpClient.readFileStream(sourcePath);
                         const localStream = fs.createWriteStream(tempFile);
+                        let completedDownload = false;
                         await new Promise<void>((resolve, reject) => {
+                            const done = (err?: Error) => {
+                                if (completedDownload) return;
+                                completedDownload = true;
+                                if (err) {
+                                    reject(err);
+                                } else {
+                                    resolve();
+                                }
+                            };
                             let bytesDownloaded = 0;
                             remoteStream.on('data', (chunk: any) => {
                                 bytesDownloaded += chunk.length;
                                 transferManager.updateChildProgress(session.id, child.id, Math.floor(bytesDownloaded / 2));
                             });
-                            remoteStream.on('error', reject);
-                            localStream.on('error', reject);
-                            localStream.on('close', resolve);
+                            remoteStream.on('error', (err: any) => done(err));
+                            localStream.on('error', (err: any) => done(err));
+                            localStream.on('finish', () => done());
+                            localStream.on('close', () => done());
                             remoteStream.pipe(localStream);
                         });
                         
                         const localReadStream = fs.createReadStream(tempFile);
                         const remoteWriteStream = await destConn.sftpClient.writeFileStream(destPath);
+                        let completedUpload = false;
                         await new Promise<void>((resolve, reject) => {
+                            const done = (err?: Error) => {
+                                if (completedUpload) return;
+                                completedUpload = true;
+                                if (err) {
+                                    reject(err);
+                                } else {
+                                    resolve();
+                                }
+                            };
                             let bytesUploaded = 0;
                             localReadStream.on('data', (chunk: any) => {
                                 bytesUploaded += chunk.length;
                                 transferManager.updateChildProgress(session.id, child.id, Math.floor(stat.size / 2) + Math.floor(bytesUploaded / 2));
                             });
-                            localReadStream.on('error', reject);
-                            remoteWriteStream.on('error', reject);
-                            remoteWriteStream.on('close', resolve);
+                            localReadStream.on('error', (err: any) => done(err));
+                            remoteWriteStream.on('error', (err: any) => done(err));
+                            remoteWriteStream.on('finish', () => done());
+                            remoteWriteStream.on('close', () => done());
                             localReadStream.pipe(remoteWriteStream);
                         });
                         

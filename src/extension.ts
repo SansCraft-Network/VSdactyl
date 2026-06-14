@@ -350,30 +350,52 @@ export function activate(context: vscode.ExtensionContext) {
 
                     const remoteStream = await sourceConn.sftpClient.readFileStream(sourcePath);
                     const localStream = fs.createWriteStream(tempFile);
+                    let completedDownload = false;
                     await new Promise<void>((resolve, reject) => {
+                        const done = (err?: Error) => {
+                            if (completedDownload) return;
+                            completedDownload = true;
+                            if (err) {
+                                reject(err);
+                            } else {
+                                resolve();
+                            }
+                        };
                         let bytesDownloaded = 0;
                         remoteStream.on('data', (chunk: any) => {
                             bytesDownloaded += chunk.length;
                             transferManager.updateChildProgress(session.id, child.id, Math.floor(bytesDownloaded / 2));
                         });
-                        remoteStream.on('error', reject);
-                        localStream.on('error', reject);
-                        localStream.on('close', resolve);
+                        remoteStream.on('error', (err: any) => done(err));
+                        localStream.on('error', (err: any) => done(err));
+                        localStream.on('finish', () => done());
+                        localStream.on('close', () => done());
                         remoteStream.pipe(localStream);
                     });
 
                     // Upload to destination
                     const localReadStream = fs.createReadStream(tempFile);
                     const remoteWriteStream = await destSftp.writeFileStream(destPath);
+                    let completedUpload = false;
                     await new Promise<void>((resolve, reject) => {
+                        const done = (err?: Error) => {
+                            if (completedUpload) return;
+                            completedUpload = true;
+                            if (err) {
+                                reject(err);
+                            } else {
+                                resolve();
+                            }
+                        };
                         let bytesUploaded = 0;
                         localReadStream.on('data', (chunk: any) => {
                             bytesUploaded += chunk.length;
                             transferManager.updateChildProgress(session.id, child.id, Math.floor(stat.size / 2) + Math.floor(bytesUploaded / 2));
                         });
-                        localReadStream.on('error', reject);
-                        remoteWriteStream.on('error', reject);
-                        remoteWriteStream.on('close', resolve);
+                        localReadStream.on('error', (err: any) => done(err));
+                        remoteWriteStream.on('error', (err: any) => done(err));
+                        remoteWriteStream.on('finish', () => done());
+                        remoteWriteStream.on('close', () => done());
                         localReadStream.pipe(remoteWriteStream);
                     });
 

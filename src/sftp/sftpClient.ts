@@ -510,7 +510,7 @@ export class SftpClient {
             sftp.readdir(directory, (err, list) => {
                 if (err) {
                     // Suppress log for common errors or lower level
-                    if (err.message === 'no such file') {
+                    if (isENOENTMessage(err.message ?? '') || (err as any).code === 'ENOENT') {
                         log(`  ℹ️ LIST ${directory}: no such file`);
                     } else {
                         log(`  ❌ LIST failed: ${err.message}`);
@@ -541,7 +541,7 @@ export class SftpClient {
         return new Promise((resolve, reject) => {
             sftp.stat(filePath, (err, stats) => {
                 if (err) {
-                    if (err.message === 'no such file') {
+                    if (isENOENTMessage(err.message ?? '') || (err as any).code === 'ENOENT') {
                         log(`  ℹ️ STAT ${filePath}: no such file`);
                     } else {
                         log(`  ❌ STAT ${filePath}: ${err.message}`);
@@ -593,8 +593,19 @@ export class SftpClient {
     async writeFile(filePath: string, data: Buffer): Promise<void> {
         const stream = await this.writeFileStream(filePath);
         return new Promise((resolve, reject) => {
-            stream.on('error', (err: Error) => reject(new Error(`Failed to write ${filePath}: ${err.message}`)));
-            stream.on('close', resolve);
+            let completed = false;
+            const done = (err?: Error) => {
+                if (completed) return;
+                completed = true;
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            };
+            stream.on('error', (err: Error) => done(new Error(`Failed to write ${filePath}: ${err.message}`)));
+            stream.on('finish', () => done());
+            stream.on('close', () => done());
             stream.end(data);
         });
     }

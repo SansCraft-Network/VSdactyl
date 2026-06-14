@@ -298,18 +298,27 @@ export class TransferOrchestrator {
             }
         };
 
+        let completed = false;
         return new Promise<void>((resolve, reject) => {
+            const done = (err?: Error) => {
+                if (completed) return;
+                completed = true;
+                child.cancel = undefined;
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            };
             readStream.on('data', (chunk: string | Buffer) => {
                 const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                 transferred += buffer.length;
                 this.sessions.updateChildProgress(sessionId, child.id, transferred);
             });
-            readStream.on('error', reject);
-            writeStream.on('error', reject);
-            writeStream.on('close', () => {
-                child.cancel = undefined;
-                resolve();
-            });
+            readStream.on('error', (err: any) => done(err));
+            writeStream.on('error', (err: any) => done(err));
+            writeStream.on('finish', () => done());
+            writeStream.on('close', () => done());
             readStream.pipe(writeStream);
         });
     }

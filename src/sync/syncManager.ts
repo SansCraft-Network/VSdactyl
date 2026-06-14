@@ -14,6 +14,7 @@ export interface SyncConfig {
     remotePath: string;
     uploadOnSave: boolean;
     ignorePatterns: string[];
+    remoteExcludePatterns?: string[];
 }
 
 interface SyncMap {
@@ -45,19 +46,24 @@ export class SyncManager {
     private async initialize() {
         await this.scanForConfigs();
 
-        const watcher = vscode.workspace.createFileSystemWatcher('**/*');
-        watcher.onDidChange(uri => this.handleFileEvent(uri, 'change'));
-        watcher.onDidCreate(uri => this.handleFileEvent(uri, 'create'));
-        watcher.onDidDelete(uri => this.handleFileEvent(uri, 'delete'));
+        if (typeof vscode.workspace.createFileSystemWatcher === 'function') {
+            const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+            watcher.onDidChange(uri => this.handleFileEvent(uri, 'change'));
+            watcher.onDidCreate(uri => this.handleFileEvent(uri, 'create'));
+            watcher.onDidDelete(uri => this.handleFileEvent(uri, 'delete'));
 
-        const configWatcher = vscode.workspace.createFileSystemWatcher('**/.vsdactyl-sync.json');
-        configWatcher.onDidChange(() => this.scanForConfigs());
-        configWatcher.onDidCreate(() => this.scanForConfigs());
-        configWatcher.onDidDelete(() => this.scanForConfigs());
+            const configWatcher = vscode.workspace.createFileSystemWatcher('**/.vsdactyl-sync.json');
+            configWatcher.onDidChange(() => this.scanForConfigs());
+            configWatcher.onDidCreate(() => this.scanForConfigs());
+            configWatcher.onDidDelete(() => this.scanForConfigs());
+        }
     }
 
     private async scanForConfigs() {
         this.syncMaps.clear();
+        if (typeof vscode.workspace.findFiles !== 'function') {
+            return;
+        }
         const uris = await vscode.workspace.findFiles('**/.vsdactyl-sync.json', '**/node_modules/**');
         
         for (const uri of uris) {
@@ -180,7 +186,8 @@ export class SyncManager {
             serverName: item.server.name,
             remotePath: remotePath,
             uploadOnSave: true,
-            ignorePatterns: [".git", "node_modules", ".vsdactyl-sync.json"]
+            ignorePatterns: [".git", "node_modules", ".vsdactyl-sync.json", ".vsdactyl-sync-status.json"],
+            remoteExcludePatterns: ["*.log", "*.tar.gz", "node_modules/"]
         };
 
         await vscode.workspace.fs.writeFile(configPath, Buffer.from(JSON.stringify(config, null, 4), 'utf8'));
@@ -203,10 +210,10 @@ export class SyncManager {
         return longestMatch;
     }
 
-    private isIgnored(fsPath: string, config: SyncConfig): boolean {
-        const basename = path.basename(fsPath);
+    private isIgnored(fsPath: string, config: SyncConfig, localBasePath: string): boolean {
+        const relativePath = path.relative(localBasePath, fsPath).replace(/\\/g, '/');
         for (const pattern of config.ignorePatterns) {
-            if (basename === pattern || fsPath.includes(pattern)) {
+            if (matchesPattern(relativePath, pattern)) {
                 return true;
             }
         }
@@ -219,11 +226,12 @@ export class SyncManager {
         const map = this.getMappingForPath(uri.fsPath);
         if (!map || !map.config.uploadOnSave) return;
         
-        if (this.isIgnored(uri.fsPath, map.config)) return;
+        if (this.isIgnored(uri.fsPath, map.config, map.localBasePath)) return;
 
         const relativePath = path.relative(map.localBasePath, uri.fsPath).replace(/\\/g, '/');
         const remoteFilePath = path.posix.join(map.config.remotePath, relativePath);
 
+        let size = 0;
         try {
             const sftp = await this.getSftpConnection(map.config);
             if (!sftp) return;
@@ -235,12 +243,14 @@ export class SyncManager {
                 } catch {
                     // ignore if neither file nor empty dir
                 }
+                await this.writeSyncStatus(map.localBasePath, relativePath, 'success');
                 vscode.window.setStatusBarMessage(`🗑️ VSDactyl Synced Delete: ${relativePath}`, 3000);
             } else {
                 let isDirectory = false;
                 try {
                     const stat = await vscode.workspace.fs.stat(uri);
                     isDirectory = stat.type === vscode.FileType.Directory;
+                    size = stat.size;
                 } catch (e) {
                     // File might have been deleted quickly
                     return;
@@ -256,13 +266,72 @@ export class SyncManager {
                 await this.ensureRemoteDir(sftp, parentDir);
 
                 const localBuffer = await vscode.workspace.fs.readFile(uri);
+                size = localBuffer.length;
                 await sftp.writeFile(remoteFilePath, Buffer.from(localBuffer));
+                await this.writeSyncStatus(map.localBasePath, relativePath, 'success', size);
                 vscode.window.setStatusBarMessage(`✅ VSDactyl Synced: ${relativePath}`, 3000);
             }
         } catch (err: any) {
             Logger.error(`[Auto-Sync] Failed to sync ${relativePath}`, err);
+            await this.writeSyncStatus(map.localBasePath, relativePath, 'failed', size, err.message);
             vscode.window.showErrorMessage(`Auto-Sync Error (${map.config.serverName}): Failed to sync ${relativePath}. ${err.message}`);
         }
+    }
+
+    private async writeSyncStatus(
+        localBasePath: string,
+        relativeFilePath: string,
+        status: 'success' | 'failed',
+        size?: number,
+        error?: string
+    ) {
+        const statusPath = path.join(localBasePath, '.vsdactyl-sync-status.json');
+        let currentStatus: any = {
+            lastSyncTime: new Date().toISOString(),
+            status: status,
+            lastSyncedFile: relativeFilePath,
+            files: {}
+        };
+
+        try {
+            if (fs.existsSync(statusPath)) {
+                const raw = fs.readFileSync(statusPath, 'utf8');
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') {
+                    currentStatus = parsed;
+                    currentStatus.lastSyncTime = new Date().toISOString();
+                    currentStatus.status = status;
+                    currentStatus.lastSyncedFile = relativeFilePath;
+                    if (!currentStatus.files) {
+                        currentStatus.files = {};
+                    }
+                }
+            }
+        } catch (e) {
+            // ignore corrupt file
+        }
+
+        currentStatus.files[relativeFilePath] = {
+            lastSynced: new Date().toISOString(),
+            status: status,
+            size: size ?? 0,
+            ...(error ? { error } : {})
+        };
+
+        try {
+            fs.writeFileSync(statusPath, JSON.stringify(currentStatus, null, 4), 'utf8');
+        } catch (e) {
+            Logger.error(`[Auto-Sync] Failed to write status file to ${statusPath}`, e);
+        }
+    }
+
+    public getSyncConfig(serverIdentifier: string): SyncConfig | undefined {
+        for (const map of this.syncMaps.values()) {
+            if (map.config.serverIdentifier === serverIdentifier) {
+                return map.config;
+            }
+        }
+        return undefined;
     }
 
     private async ensureRemoteDir(sftp: SftpClient, dirPath: string) {
@@ -328,4 +397,24 @@ export class SyncManager {
             return null;
         }
     }
+}
+
+export function matchesPattern(filePath: string, pattern: string): boolean {
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    let normalizedPattern = pattern.replace(/\\/g, '/');
+    
+    const escaped = normalizedPattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.');
+        
+    let regex: RegExp;
+    if (normalizedPattern.endsWith('/')) {
+        regex = new RegExp(`(^|/)${escaped}`, 'i');
+    } else if (normalizedPattern.includes('/')) {
+        regex = new RegExp(`(^|/)${escaped}$`, 'i');
+    } else {
+        regex = new RegExp(`(^|/)${escaped}$`, 'i');
+    }
+    return regex.test(normalizedPath);
 }

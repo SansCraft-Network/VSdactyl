@@ -94,9 +94,36 @@ export class BulkTransferEngine {
         session.status = 'transferring';
         session.updatedAt = Date.now();
 
+        // Retrieve exclusions
+        const exclusions: string[] = [];
+        if (typeof vscode.workspace.getConfiguration === 'function') {
+            const config = vscode.workspace.getConfiguration('vsdactyl.sync');
+            const globalExclusions = config.get<string[]>('remoteExclusions', []);
+            exclusions.push(...globalExclusions);
+        }
+
+        try {
+            const SyncManagerClass = require('../sync/syncManager').SyncManager;
+            if (SyncManagerClass['instance']) {
+                const syncManager = SyncManagerClass.getInstance(undefined as any);
+                const syncConfig = syncManager.getSyncConfig(session.serverIdentifier);
+                if (syncConfig && syncConfig.remoteExcludePatterns) {
+                    exclusions.push(...syncConfig.remoteExcludePatterns);
+                }
+            }
+        } catch {
+            // Ignore
+        }
+
+        let excludeArgs = '';
+        if (exclusions.length > 0) {
+            excludeArgs = exclusions.map(pattern => `--exclude=${this.quote(pattern)}`).join(' ');
+        }
+
         try {
             const remoteArchivePath = path.posix.join(remoteSourcePath, remoteArchiveName);
-            await sftpClient.exec(`tar -czf ${this.quote(remoteArchivePath)} -C ${this.quote(remoteSourcePath)} .`);
+            const excludeCmd = excludeArgs ? ` ${excludeArgs}` : '';
+            await sftpClient.exec(`tar -czf ${this.quote(remoteArchivePath)}${excludeCmd} -C ${this.quote(remoteSourcePath)} .`);
             await this.streamRemoteFileToLocal(remoteArchivePath, tempArchive, sftpClient, context.onProgress);
 
             session.status = 'extracting';
@@ -175,16 +202,27 @@ export class BulkTransferEngine {
         const localStream = fs.createReadStream(localFile);
         const remoteStream = await sftpClient.writeFileStream(remoteFile);
         let bytesTransferred = 0;
+        let completed = false;
 
         return new Promise<void>((resolve, reject) => {
+            const done = (err?: Error) => {
+                if (completed) return;
+                completed = true;
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            };
             localStream.on('data', (chunk: string | Buffer) => {
                 const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                 bytesTransferred += buffer.length;
                 onProgress?.(bytesTransferred);
             });
-            localStream.on('error', reject);
-            remoteStream.on('error', reject);
-            remoteStream.on('close', resolve);
+            localStream.on('error', (err: any) => done(err));
+            remoteStream.on('error', (err: any) => done(err));
+            remoteStream.on('finish', () => done());
+            remoteStream.on('close', () => done());
             localStream.pipe(remoteStream);
         });
     }
@@ -193,16 +231,27 @@ export class BulkTransferEngine {
         const remoteStream = await sftpClient.readFileStream(remoteFile);
         const localStream = fs.createWriteStream(localFile);
         let bytesTransferred = 0;
+        let completed = false;
 
         return new Promise<void>((resolve, reject) => {
+            const done = (err?: Error) => {
+                if (completed) return;
+                completed = true;
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            };
             remoteStream.on('data', (chunk: string | Buffer) => {
                 const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
                 bytesTransferred += buffer.length;
                 onProgress?.(bytesTransferred);
             });
-            remoteStream.on('error', reject);
-            localStream.on('error', reject);
-            localStream.on('close', resolve);
+            remoteStream.on('error', (err: any) => done(err));
+            localStream.on('error', (err: any) => done(err));
+            localStream.on('finish', () => done());
+            localStream.on('close', () => done());
             remoteStream.pipe(localStream);
         });
     }
